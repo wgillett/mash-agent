@@ -1,0 +1,6 @@
+{"results": [{
+  "set_id": "abc-123", "effective_time": "20240314",
+  "openfda": {"brand_name": ["REZDIFFRA"], "generic_name": ["RESMETIROM"]},
+  "warnings_and_cautions": ["5.1 Hepatotoxicity ...", "5.2 Gallbladder ..."],
+  "adverse_reactions": ["Diarrhea, nausea ..."],
+  "contraindications": []}]}
