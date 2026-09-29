@@ -222,6 +222,7 @@ __marimo__/
 /briefing.md
 /run_report.json
 /eval_results/
+/out
 
 # MacOS
 .DS_Store
