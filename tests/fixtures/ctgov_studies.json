@@ -1,7 +1,0 @@
-{"studies": [{"protocolSection": {
-  "identificationModule": {"nctId": "NCT00000001", "briefTitle": "Example Phase 3 MASH study"},
-  "sponsorCollaboratorsModule": {"leadSponsor": {"name": "Example Pharma"}},
-  "statusModule": {"overallStatus": "RECRUITING"},
-  "designModule": {"phases": ["PHASE3"]},
-  "outcomesModule": {"primaryOutcomes": [{"measure": "MASH resolution"}]},
-  "armsInterventionsModule": {"interventions": [{"name": "Drug X"}]}}}]}
