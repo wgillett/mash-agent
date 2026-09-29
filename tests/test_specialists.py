@@ -141,3 +141,26 @@ async def test_tool_failure_propagates_for_supervisor_to_handle() -> None:
     tools = in_process_caller(pubmed.build_server(client))
     with pytest.raises(ToolError):
         await literature.build(llm, tools).run(SubTask(focus="x"))
+
+
+async def test_max_findings_caps_output_and_is_stated_in_prompt(
+    trials_transport: httpx.MockTransport,
+) -> None:
+    def finding(nct: str) -> RawFinding:
+        return RawFinding(claim=f"claim {nct}", source_id=nct, evidence="Sponsor:")
+
+    llm = ScriptedLLM(
+        [
+            trials.TrialsQuery(condition="MASH OR NASH"),
+            ExtractedFindings(
+                findings=[finding("NCT07701993"), finding("NCT07631637"), finding("NCT06419374")]
+            ),
+        ]
+    )
+    tools = in_process_caller(clinicaltrials.build_server(api_for(trials_transport)))
+    specialist = trials.build(llm, tools)
+    specialist._max_findings = 2  # noqa: SLF001
+    result = await specialist.run(SubTask(focus="pipeline"))
+    assert [f.source_id for f in result.findings] == ["NCT07701993", "NCT07631637"]
+    assert len(result.dropped) == 1 and "over max_findings=2" in result.dropped[0]
+    assert "at most 12 findings" in llm.calls[1]["system"]  # default limit is what the model saw

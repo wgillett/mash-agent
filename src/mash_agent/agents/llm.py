@@ -27,8 +27,18 @@ class StructuredLLM(Protocol):
     ) -> Generated[T]: ...
 
 
+class OutputTruncatedError(ValueError):
+    """The model hit ``max_tokens`` before finishing its structured output."""
+
+
 def unpack[T: BaseModel](schema: type[T], out: dict[str, Any]) -> Generated[T]:
     """Convert LangChain's ``include_raw=True`` output into ``Generated``."""
+    raw_meta = getattr(out.get("raw"), "response_metadata", None) or {}
+    if raw_meta.get("stop_reason") == "max_tokens":
+        raise OutputTruncatedError(
+            f"model output for {schema.__name__} was cut off at max_tokens; "
+            "ask for less output or raise max_tokens"
+        )
     if (err := out.get("parsing_error")) is not None:
         raise ValueError(f"model output did not match {schema.__name__}: {err}")
     parsed = out.get("parsed")
@@ -54,7 +64,7 @@ class AnthropicLLM:
     def __init__(
         self,
         model: str | None = None,
-        max_tokens: int = 4096,
+        max_tokens: int = 8192,
         chat: BaseChatModel | None = None,
     ) -> None:
         self.model = model or os.environ.get(MODEL_ENV_VAR, DEFAULT_MODEL)

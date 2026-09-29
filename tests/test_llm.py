@@ -4,7 +4,7 @@ import pytest
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
 
-from mash_agent.agents.llm import AnthropicLLM, unpack
+from mash_agent.agents.llm import AnthropicLLM, OutputTruncatedError, unpack
 from mash_agent.agents.models import ExtractedFindings, RawFinding
 
 
@@ -60,3 +60,10 @@ async def test_generate_uses_native_structured_output_not_forced_tool_calling() 
     assert chat.kwargs == {"include_raw": True, "method": "json_schema"}
     assert out.value is parsed and out.usage.input_tokens == 5
     assert [m.content for m in chat.messages] == ["sys", "usr"]
+
+
+def test_unpack_flags_truncated_output_before_parse_error() -> None:
+    raw = AIMessage(content="", response_metadata={"stop_reason": "max_tokens"})
+    out = {"raw": raw, "parsed": None, "parsing_error": ValueError("Field required")}
+    with pytest.raises(OutputTruncatedError, match="cut off at max_tokens"):
+        unpack(ExtractedFindings, out)

@@ -47,13 +47,18 @@ class Specialist[Q: BaseModel]:
         extract_system: str,
         fetch: Callable[[ToolCaller, Q], Awaitable[list[SourceDoc]]],
         query_label: Callable[[Q], str],
+        max_findings: int = 12,
     ) -> None:
         self.name = name
         self._llm = llm
         self._tools = tools
         self._query_schema = query_schema
         self._query_system = query_system
-        self._extract_system = extract_system
+        self._max_findings = max_findings
+        self._extract_system = (
+            f"{extract_system}\n- Return at most {max_findings} findings: choose the most "
+            "informative ones and do not restate the same fact."
+        )
         self._fetch = fetch
         self._query_label = query_label
 
@@ -83,6 +88,9 @@ class Specialist[Q: BaseModel]:
         result.usage += extracted.usage
         by_id = {s.source_id: s for s in sources}
         for raw in extracted.value.findings:
+            if len(result.findings) >= self._max_findings:
+                result.dropped.append(f"over max_findings={self._max_findings}: {raw.claim[:80]}")
+                continue
             source = by_id.get(raw.source_id)
             if source is None:
                 result.dropped.append(f"unknown source_id {raw.source_id!r}: {raw.claim[:80]}")
