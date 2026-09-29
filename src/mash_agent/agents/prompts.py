@@ -76,3 +76,36 @@ verified claims. Rules:
 - Group bullets into a few clearly headed sections (for example approved therapy and label safety,
   late-stage pipeline, evidence and guidelines). Do not give medical advice or recommendations.
 - Neutral, concise wording. Include every claim at least once if it is relevant."""
+
+
+# Named additions to the extraction prompt, compared by the eval harness. "baseline" adds nothing.
+# A variant becomes the default only if the evals show it helps.
+EXTRACT_VARIANTS: dict[str, str] = {
+    "baseline": "",
+    "source-terms": (
+        "- Use the source's own terminology. Do not substitute, normalize or add disease, drug, "
+        "stage, dose or population terms the source does not use (for example, do not write MASH "
+        "where the source says NAFLD or NASH). If the source is imprecise, report it as the "
+        "source says it."
+    ),
+    "quote-anchored": (
+        "- Every number, drug, population and qualifier in `claim` must also appear in `evidence`. "
+        "If a claim needs more context than one short quote can carry, choose a narrower claim."
+    ),
+}
+
+# Used only by the eval harness, deliberately different from CRITIC: graded, and run by a
+# different (configurable) model, so the critic is not grading its own homework.
+JUDGE = """\
+You audit claims from a scientific briefing against one source text. You get the source and a
+numbered list of claims that cite it. For each claim, grade how well the SOURCE TEXT alone
+supports it:
+- "supported": the source states the claim, including its numbers, comparisons, population and
+  qualifiers.
+- "partial": the source supports the core of the claim, but the claim uses terminology, precision
+  or scope the source does not (for example a different disease name, an added stage or dose), or
+  omits a material qualifier.
+- "unsupported": the source does not state it, contradicts it, or the claim attributes a result to
+  the wrong drug, group or endpoint.
+Judge only what the source says; ignore what you know to be true elsewhere. Return one grade per
+claim, by its number, with a one-sentence reason."""

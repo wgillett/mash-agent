@@ -83,3 +83,42 @@ Short notes on non-obvious choices. Extended as milestones land.
   summary tables, a live status line); files stay plain, and output has no colour codes when not
   attached to a terminal. The status line is paused while the approval prompt is shown. HTTP
   library logging is off unless `-v`.
+
+## Evaluation (Milestone 6)
+
+- **One command:** `mash-agent eval run` (or `python evals/run_evals.py`) runs a fixed question
+  set (`evals/questions.yaml`, 14 questions across regulatory, trials, literature, mixed and two
+  safety cases) end to end and writes `report.json` (machine-readable), `summary.md`,
+  `runs/<question>.json` and a `spotcheck.jsonl` sample. `mash-agent eval compare A B` diffs two
+  runs. It asks before spending money; `--yes` skips that. Results land in `eval_results/`
+  (git-ignored); commit a `summary.md` deliberately when you want it recorded.
+- **An independent judge:** the critic cannot grade itself. Every claim the specialists propose
+  is also graded by a *judge* (a different model by default, `claude-opus-5-5`, and a different,
+  graded prompt: supported / partial / unsupported) against the same source text, before the
+  critic's exclusions are applied. That gives, against the judge: the unsupported rate before the
+  critic, the residual rate in what reaches the briefing (after), how many unsupported claims the
+  critic caught or missed, and how many good claims it wrongly excluded. Strict citation accuracy
+  counts only fully supported claims; lenient also counts partial. The judge is an LLM, so it is
+  an independent check, not ground truth: `spotcheck.jsonl` (disagreements first) is there for
+  hand-labelling a sample.
+- **Known-truth canary as a second view:** the corrupted-claim test (see Milestone 4) runs on
+  every question's claims and its miss rate is aggregated. It does not depend on the judge.
+- **Deterministic checks:** structural guarantees of each briefing (every bullet cites a source,
+  every cited source was retrieved, every claim was critic-passed), advice-like phrases, topic
+  coverage terms, and out-of-scope handling (`expect_no_claims`). Coverage terms are a coarse
+  proxy, not correctness.
+- **Honest statistics:** every rate is reported with counts and a 95% Wilson interval, and
+  `compare` says "within noise" when intervals overlap. With a few hundred claims and a
+  low error rate, one run cannot resolve small differences; the higher-base-rate metric
+  (not fully supported before the critic) has the most resolving power. Model output varies run
+  to run; repeat before acting on small gaps. Runs within a day also share the on-disk API cache,
+  so variants see the same retrieved records when their queries match.
+- **Failures are data:** a question that crashes is recorded as `crashed`; unjudgeable claims are
+  `unjudged` and excluded from rates (never counted as right or wrong); costs are reported for the
+  system and separately for eval overhead (judge, canary).
+- **Prompt variants:** named additions to the extraction prompt (`EXTRACT_VARIANTS`) can be
+  evaluated with `--variant`. A variant becomes the default only if the evals show it helps
+  without cutting useful claims. Two are defined: `source-terms` (keep the source's own
+  terminology; motivated by a real run where the extractor wrote "NAFLD/MASH" over a source that
+  said NAFLD and the critic rightly excluded it) and `quote-anchored` (every number, drug,
+  population and qualifier in a claim must appear in its quote).

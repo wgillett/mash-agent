@@ -158,6 +158,7 @@ class Workflow:
         sleep: Callable[[float], Awaitable[None]] | None = None,
         today: Callable[[], date] = date.today,
         progress: Callable[[str], None] | None = None,
+        extract_addendum: str = "",
     ) -> None:
         cfg = config or SupervisorConfig()
         self._progress = progress or (lambda message: None)
@@ -165,7 +166,9 @@ class Workflow:
         self.model = instrumented.model
         llm = instrumented
         tools = instrument_tools(tools)
-        self._supervisor = Supervisor(llm, tools, cfg, sleep=sleep, progress=progress)
+        self._supervisor = Supervisor(
+            llm, tools, cfg, sleep=sleep, progress=progress, extract_addendum=extract_addendum
+        )
         self._critic = Critic(
             llm,
             timeout_s=cfg.specialist_timeout_s,

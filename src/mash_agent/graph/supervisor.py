@@ -53,6 +53,7 @@ class Supervisor:
         config: SupervisorConfig | None = None,
         sleep: Any = None,
         progress: Callable[[str], None] | None = None,
+        extract_addendum: str = "",
     ) -> None:
         self._llm = llm
         self._progress = progress or (lambda message: None)
@@ -61,9 +62,9 @@ class Supervisor:
         self._config = config or SupervisorConfig()
         self._sleep_kwargs: dict[str, Any] = {"sleep": sleep} if sleep else {}
         self._specialists: dict[AgentName, Specialist[Any]] = {
-            "literature": literature.build(llm, tools),
-            "trials": trials.build(llm, tools),
-            "regulatory": regulatory.build(llm, tools),
+            "literature": literature.build(llm, tools, extract_addendum),
+            "trials": trials.build(llm, tools, extract_addendum),
+            "regulatory": regulatory.build(llm, tools, extract_addendum),
         }
         self.graph = self._build()
 
