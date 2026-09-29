@@ -120,7 +120,7 @@ async def main_async(out_dir: Path) -> int:
             "OR condition query returns trials", len(res2.trials) > 0, str(len(res2.trials))
         )
         liver = re.compile(r"MASH|NASH|steato|fatty liver|MASLD|NAFLD", re.I)
-        offtopic = [t.nct_id for t in res2.trials if not liver.search(t.title)]
+        offtopic = [f"{t.nct_id}: {t.title}" for t in res2.trials if not liver.search(t.title)]
         report.check("OR query titles are liver-related", not offtopic, f"off-topic: {offtopic}")
 
     async def fda_body(client: ApiClient) -> None:
