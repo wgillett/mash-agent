@@ -3,6 +3,8 @@ from pathlib import Path
 import httpx
 import pytest
 
+from mash_agent.agents.tools import ToolCaller, in_process_caller
+from mash_agent.mcp_servers import clinicaltrials, openfda, pubmed
 from mash_agent.mcp_servers.client import ApiClient
 from mash_agent.ratelimit import RateLimiter
 
@@ -43,3 +45,16 @@ def trials_transport() -> httpx.MockTransport:
 @pytest.fixture
 def label_transport() -> httpx.MockTransport:
     return serve({"/drug/label.json": LABEL})
+
+
+@pytest.fixture
+def all_tools(
+    pubmed_transport: httpx.MockTransport,
+    trials_transport: httpx.MockTransport,
+    label_transport: httpx.MockTransport,
+) -> ToolCaller:
+    return in_process_caller(
+        pubmed.build_server(api_for(pubmed_transport)),
+        clinicaltrials.build_server(api_for(trials_transport)),
+        openfda.build_server(api_for(label_transport)),
+    )

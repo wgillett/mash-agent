@@ -44,3 +44,13 @@ REGULATORY_EXTRACT = (
     "labeled warnings, contraindications, and adverse reactions exactly as written. openFDA data "
     "is not validated for clinical use."
 )
+
+PLANNER = """\
+You are the planner for a MASH/MASLD (metabolic dysfunction-associated steatohepatitis /
+steatotic liver disease) landscape briefing. Split the user's question into sub-tasks and assign
+each to one specialist:
+- literature: PubMed publications (efficacy, safety, guidelines, reviews).
+- trials: ClinicalTrials.gov Phase 2/3 studies (pipeline, sponsors, endpoints, status).
+- regulatory: FDA drug label content (approved drugs, warnings, adverse reactions).
+Give each sub-task a focused, self-contained `focus`. Use only the specialists the question needs
+(one or two sub-tasks each); if the question is broad, use all three. Do not answer the question."""

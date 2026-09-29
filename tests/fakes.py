@@ -1,6 +1,7 @@
 """Test doubles for the LLM seam."""
 
-from collections.abc import Sequence
+import inspect
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
 from pydantic import BaseModel
@@ -26,3 +27,26 @@ class ScriptedLLM:
         return Generated(
             response, Usage(input_tokens=self._tokens[0], output_tokens=self._tokens[1])
         )
+
+
+class FunctionLLM:
+    """Routes each call to ``handler(schema, system, user)``; safe under parallel specialists."""
+
+    def __init__(
+        self,
+        handler: Callable[[type[BaseModel], str, str], BaseModel | Awaitable[BaseModel]],
+        tokens: tuple[int, int] = (10, 5),
+    ) -> None:
+        self._handler = handler
+        self._tokens = tokens
+        self.calls: list[tuple[str, str]] = []  # (schema name, system prompt)
+
+    async def generate[T: BaseModel](
+        self, schema: type[T], *, system: str, user: str
+    ) -> Generated[T]:
+        self.calls.append((schema.__name__, system))
+        out = self._handler(schema, system, user)
+        if inspect.isawaitable(out):
+            out = await out
+        assert isinstance(out, schema)
+        return Generated(out, Usage(input_tokens=self._tokens[0], output_tokens=self._tokens[1]))
