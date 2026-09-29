@@ -13,7 +13,6 @@ dependencies = [
     "opentelemetry-api>=1.45.0",
     "opentelemetry-sdk>=1.45.0",
     "pydantic>=2.13.5",
-    "pydantic-ai-slim[anthropic]>=2.51.0",
     "pyyaml>=6.0.3",
     "rich>=15.0.0",
 ]
