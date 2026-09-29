@@ -189,6 +189,7 @@ def cli() -> None:
     "--out-dir",
     type=click.Path(path_type=Path),
     default=Path("."),
+    envvar="MASH_AGENT_OUT_DIR",
     show_default=True,
     help="Where to write briefing.md, run_report.json and trace.jsonl.",
 )
@@ -320,7 +321,7 @@ def eval_group() -> None:
     "--out-dir",
     type=click.Path(path_type=Path),
     default=None,
-    help="Default: eval_results/<timestamp>-<variant>.",
+    help="Default: $MASH_AGENT_EVAL_DIR (or eval_results)/<timestamp>-<variant>.",
 )
 @click.option("--yes", is_flag=True, help="Do not ask before spending money.")
 @click.option("-v", "--verbose", is_flag=True, help="Show library HTTP request logging.")
@@ -354,7 +355,8 @@ def eval_run(
     if not yes and not click.confirm("Run the evaluation (this calls paid APIs)?", default=False):
         raise click.Abort()
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    target = out_dir or Path("eval_results") / f"{stamp}-{variant}"
+    eval_root = Path(os.environ.get("MASH_AGENT_EVAL_DIR", "eval_results"))
+    target = out_dir or eval_root / f"{stamp}-{variant}"
     reporter = Reporter(console)
     reporter.start()
     try:

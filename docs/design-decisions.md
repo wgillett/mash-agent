@@ -1,6 +1,47 @@
 # Design decisions
 
-Short notes on non-obvious choices. Extended as milestones land.
+Notes on the non-obvious choices in this repo and the evidence behind them, in the order the
+system was built. This is a demo and learning exercise, not a clinical tool.
+
+| Question | Section |
+|---|---|
+| Why self-written MCP servers, and how are rate limits, caching and retries handled? | [Tools and data access](#tools-and-data-access-milestones-1-2) |
+| Why a supervisor with specialists, and how are failures isolated? | [Supervisor / specialist](#supervisor--specialist-architecture-milestone-3) |
+| Why a separate critic, and how is provenance guaranteed? | [Verification](#verification-synthesis-and-the-approval-gate-milestone-4) |
+| How is cost tracked, and how is the run traced? | [Observability](#observability-cost-and-the-cli-milestone-5) |
+| How is quality measured, and why is `no-commentary` the default prompt? | [Evaluation](#evaluation-milestone-6) |
+| How is it packaged? | [Packaging](#packaging-milestone-7) |
+
+## Tools and data access (Milestones 1-2)
+
+- **Self-written MCP servers, one per source:** PubMed, ClinicalTrials.gov (API v2 only) and
+  openFDA each get a thin server with a typed contract (Pydantic inputs and outputs). The output
+  shapes are ours, so the rest of the system does not depend on a third-party server's format,
+  and every result carries the identifier used for citation (PMID, NCT ID, or label set ID plus
+  section). Existing community servers cover the same APIs, but the verification design needs a
+  stable, source-tagged contract that keeps the source text intact.
+- **In-process by default:** the agents call the servers through the MCP tool interface
+  (`in_process_caller`), not over stdio, to avoid running three extra processes for a demo. Each
+  server also runs standalone (`python -m mash_agent.mcp_servers.pubmed`) and answers the MCP
+  handshake over stdio.
+- **Shared HTTP client:** one client applies a per-tool rate limiter (spacing calls, so parallel
+  specialists cannot exceed PubMed's limits), a timeout, retries with exponential backoff on 429
+  and 5xx (honouring `Retry-After`), and an on-disk JSON cache (24-hour TTL, atomic writes). A
+  cache read or write problem never fails a call.
+- **Real fixtures, not guesses:** the first fixtures were hand-written from the API
+  documentation; `scripts/live_smoke.py` then recorded real responses, which replaced them and
+  exposed one relevance problem (the bare acronym "MASH" matches unrelated trials, so the trials
+  query uses a boolean expression and the trials record carries its conditions). Tests never use
+  the network.
+- **Specialists:** each plans a query with the model, fetches sources through its tool, and
+  extracts findings, each with a verbatim quote. A finding that cites a source that was not
+  retrieved is dropped, and `evidence_verified` records whether the quote is literally in the
+  source. That check is mechanical and does not prove the quote supports the claim; the critic
+  does that.
+- **Structured output:** the model returns Pydantic objects through the provider's native
+  structured-output mode. Forced tool calling was rejected by the current model, and output is
+  capped so a long answer cannot be cut off unnoticed (truncation raises an error that carries the
+  tokens it cost).
 
 ## Supervisor / specialist architecture (Milestone 3)
 
@@ -21,8 +62,8 @@ Short notes on non-obvious choices. Extended as milestones land.
   not in the agents, so parallel specialists share them.
 - **Retry policy:** all exceptions are retried up to `max_attempts` (default 3). This is coarse:
   deterministic errors are retried too. It is acceptable at this scale; revisit if cost matters.
-- **Not yet done:** the critic, synthesis, human approval gate, and cost tracking (later
-  milestones); the run report currently covers attempts, latency and token counts only.
+- **Where the rest lives:** the critic, synthesis and approval gate are described in the next
+  section, and per-stage cost and tracing under Observability.
 
 ## Verification, synthesis and the approval gate (Milestone 4)
 
@@ -159,3 +200,16 @@ Short notes on non-obvious choices. Extended as milestones land.
 - **Known follow-up:** the trials specialist keeps some low-relevance results (for example old
   academic NAFLD trials) that take slots from the current MASH pipeline. This is a relevance
   problem, not an accuracy one, so the evals above do not measure it.
+
+## Packaging (Milestone 7)
+
+- **Image:** based on the official uv image (`ghcr.io/astral-sh/uv:python3.13-bookworm-slim`), with
+  dependencies installed in their own layer from `uv.lock` (`uv sync --frozen --no-dev`) so code
+  changes do not reinstall them. It runs as a non-root user.
+- **Build context is an allowlist:** `.dockerignore` excludes everything except the files the
+  image needs, so `.git`, local outputs and any stray secrets cannot enter the image.
+- **Output and cache locations are environment variables** (`MASH_AGENT_OUT_DIR`,
+  `MASH_AGENT_EVAL_DIR`, `MASH_AGENT_CACHE_DIR`), preset in the image to the `/out` and `/cache`
+  mount points, so a run needs no path flags. The approval gate needs a terminal (`docker run
+  -it`) unless `--auto-approve` is used.
+- **Secrets** are passed at run time (`-e ANTHROPIC_API_KEY`), never baked into the image.

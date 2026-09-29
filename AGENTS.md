@@ -220,3 +220,16 @@ Before committing, `ruff check`, `ruff format --check`, `mypy`, and `pytest` mus
 6. **Evals:** fixed question set, metrics, and report.
 7. **Polish:** Dockerization, README, architecture diagram, design-decisions doc.
 8. **Optional:** CrewAI or Pydantic AI reimplementation and trade-off comparison.
+
+## Follow-ups (optional, not started)
+
+Ideas noted during Milestones 1 to 7. None is required; keep scope small and finish the item before starting another.
+
+- **Trials relevance:** the trials specialist keeps some low-relevance results (for example old academic NAFLD trials) that take slots from the current MASH pipeline. Prefer active or recently completed industry-sponsored MASH trials, and measure relevance in the evals (today they measure accuracy and coarse topic coverage only).
+- **Calibrate the eval judge:** hand-label 10 to 25 rows of `spotcheck.jsonl` and compare with the judge's grades. Optionally run a judge from a different vendor on a subset (for example the spot-check sample or the claims where the critic and judge disagree) to reduce correlated blind spots; this would need a provider decision, since Anthropic is the specified provider.
+- **Stronger eval evidence:** replicate the extraction-prompt variants (`quote-anchored` and `no-commentary` have one run each), add the harder canary mutations (wrong arm or population, primary versus secondary endpoint, dropped qualifier), and extend the advice-phrase check beyond its narrow phrase list.
+- **Re-check final wording:** synthesis wording is not re-verified against the sources; only the claims it is built from are.
+- **Resilience:** back off longer on overloaded (529) errors; retry policy currently retries every exception, including deterministic ones.
+- **Observability:** export traces over OTLP (for example to Langfuse); today spans go to `trace.jsonl`.
+- **Housekeeping:** add CI (ruff, mypy, pytest) on the repository; remove the `source-terms` prompt variant, which had no measurable effect.
+- **Milestone 8** above (CrewAI or Pydantic AI reimplementation with a trade-off comparison) remains optional.

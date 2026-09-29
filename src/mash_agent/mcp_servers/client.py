@@ -1,6 +1,7 @@
 """Shared HTTP client: per-tool rate limiting, retries with backoff on 429/5xx, disk cache."""
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -8,6 +9,8 @@ import httpx
 
 from mash_agent.cache import DiskCache
 from mash_agent.ratelimit import RateLimiter
+
+logger = logging.getLogger(__name__)
 
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
@@ -64,7 +67,10 @@ class ApiClient:
                     resp.raise_for_status()
                     value = resp.text if as_text else resp.json()
                     if self._cache is not None:
-                        self._cache.set(key, value)
+                        try:
+                            self._cache.set(key, value)
+                        except OSError as exc:  # read-only or wrong-owner cache dir: run on
+                            logger.warning("cache write failed (%s); continuing without it", exc)
                     return value
                 last = f"HTTP {resp.status_code}"
                 retry_after = resp.headers.get("Retry-After")

@@ -254,3 +254,17 @@ def test_eval_run_help_shows_the_default_variant_and_all_choices() -> None:
     for name in ("legacy", "source-terms", "quote-anchored", "no-commentary"):
         assert name in out
     assert "baseline" not in out
+
+
+@pytest.mark.usefixtures("eval_services")
+def test_eval_results_root_can_come_from_the_environment(
+    questions_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MASH_AGENT_EVAL_DIR", str(tmp_path / "evals-out"))
+    result = invoke(
+        ["eval", "run", "--questions", str(questions_file), "--yes", "--no-canary", "--limit", "1"]
+    )
+    assert result.exit_code == 0, result.output
+    (run_dir,) = list((tmp_path / "evals-out").iterdir())
+    assert run_dir.name.endswith(f"-{DEFAULT_EXTRACT_VARIANT}")
+    assert (run_dir / "report.json").exists()
