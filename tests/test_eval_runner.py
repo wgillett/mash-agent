@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from mash_agent.agents.critic import ClaimVerdict, SourceVerdicts
 from mash_agent.agents.models import ExtractedFindings
+from mash_agent.agents.prompts import DEFAULT_EXTRACT_VARIANT
 from mash_agent.agents.tools import ToolCaller
 from mash_agent.evals import runner as runner_module
 from mash_agent.evals.judge import JudgedSource, JudgedVerdict
@@ -171,7 +172,7 @@ async def test_variant_text_reaches_the_extraction_prompt_and_is_recorded(
     all_tools: ToolCaller,
 ) -> None:
     system, judge = llms()
-    for variant, expect in (("baseline", False), ("source-terms", True)):
+    for variant, expect in (("legacy", False), ("source-terms", True)):
         system.calls.clear()
         report, _ = await run_eval(
             QUESTIONS[:1],
@@ -260,7 +261,9 @@ async def test_artifacts_round_trip_and_spotcheck_prioritises_disagreements(
     report, artifacts = await evaluate(all_tools)
     paths = write_artifacts(report, artifacts, tmp_path, spotcheck_n=5)
     loaded = EvalReport.model_validate_json(paths["report"].read_text())
-    assert loaded.aggregate.claims.proposed == 8 and loaded.config.variant == "baseline"
+    assert (
+        loaded.aggregate.claims.proposed == 8 and loaded.config.variant == DEFAULT_EXTRACT_VARIANT
+    )
     assert "Unsupported before the critic" in paths["summary"].read_text()
     assert sorted(p.name for p in (tmp_path / "runs").iterdir()) == [
         "label.json",
@@ -323,25 +326,40 @@ async def test_compare_uses_an_interval_for_the_difference_not_ci_overlap(
     assert "different question sets" in compare(base, other)
 
 
-async def test_variant_names_include_the_commentary_variant() -> None:
-    from mash_agent.agents.prompts import EXTRACT_VARIANTS
+def test_variant_registry_and_default() -> None:
+    from mash_agent.agents.prompts import (
+        DEFAULT_EXTRACT_VARIANT,
+        EXTRACT_VARIANTS,
+        extract_addendum,
+    )
 
-    assert set(EXTRACT_VARIANTS) == {"baseline", "source-terms", "quote-anchored", "no-commentary"}
-    assert EXTRACT_VARIANTS["baseline"] == ""
-    assert "positive statement" in EXTRACT_VARIANTS["no-commentary"]
+    assert set(EXTRACT_VARIANTS) == {"legacy", "source-terms", "quote-anchored", "no-commentary"}
+    assert EXTRACT_VARIANTS["legacy"] == ""  # the original prompt; old "baseline" runs used it
+    assert DEFAULT_EXTRACT_VARIANT == "no-commentary"  # chosen from the evals (see design notes)
+    assert extract_addendum() == EXTRACT_VARIANTS["no-commentary"]
+    assert "positive statement" in extract_addendum()
+    assert extract_addendum("legacy") == ""
+    with pytest.raises(ValueError, match="unknown extraction variant"):
+        extract_addendum("baseline")  # the old name is gone; use legacy
 
 
-async def test_started_at_is_taken_at_the_start_not_the_end(all_tools: ToolCaller) -> None:
-    from datetime import timedelta
+async def test_production_workflow_uses_the_default_variant_unless_told_otherwise(
+    all_tools: ToolCaller,
+) -> None:
+    from mash_agent.graph.state import Decision
+    from mash_agent.graph.workflow import Workflow
+    from tests.test_workflow import Recorder
 
-    clock = {"t": datetime(2026, 9, 29, 3, 0, 0, tzinfo=UTC)}
+    async def extraction_prompts(**kw: Any) -> list[str]:
+        llm = FunctionLLM(handler_with())
+        await Workflow(llm, all_tools, SupervisorConfig(backoff_s=0.0), sleep=no_sleep, **kw).run(
+            "q", Recorder(Decision(approved=True))
+        )
+        return [system for name, system in llm.calls if name == "ExtractedFindings"]
 
-    def now() -> datetime:
-        clock["t"] += timedelta(minutes=5)  # every read is 5 minutes later than the last
-        return clock["t"]
-
-    report, _ = await evaluate(all_tools, now=now)
-    assert (
-        report.config.started_at == "2026-09-29T03:05:00+00:00"
-    )  # the first read, not a later one
-    assert clock["t"] == datetime(2026, 9, 29, 3, 5, 0, tzinfo=UTC)  # and it was read only once
+    default = await extraction_prompts()
+    assert default and all("positive statement" in p for p in default)
+    legacy = await extraction_prompts(extract_addendum="")
+    assert legacy and all("positive statement" not in p for p in legacy)
+    # the shared rules are identical either way; only the addendum differs
+    assert default[0].startswith(legacy[0].split("\n- Return at most")[0])

@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from mash_agent.agents.llm import StructuredLLM
 from mash_agent.agents.models import Usage
-from mash_agent.agents.prompts import EXTRACT_VARIANTS
+from mash_agent.agents.prompts import DEFAULT_EXTRACT_VARIANT, EXTRACT_VARIANTS
 from mash_agent.agents.tools import ToolCaller
 from mash_agent.evals.canary import CanaryReport, Miss, MutationStats, run_canary
 from mash_agent.evals.judge import Judge, JudgedClaim
@@ -56,7 +56,7 @@ async def run_eval(
     llm: StructuredLLM,
     judge_llm: StructuredLLM,
     tools: ToolCaller,
-    variant: str = "baseline",
+    variant: str = DEFAULT_EXTRACT_VARIANT,
     canary: bool = True,
     parallel: int = 2,
     config: SupervisorConfig | None = None,

@@ -158,7 +158,7 @@ class Workflow:
         sleep: Callable[[float], Awaitable[None]] | None = None,
         today: Callable[[], date] = date.today,
         progress: Callable[[str], None] | None = None,
-        extract_addendum: str = "",
+        extract_addendum: str | None = None,
     ) -> None:
         cfg = config or SupervisorConfig()
         self._progress = progress or (lambda message: None)

@@ -53,8 +53,10 @@ class Supervisor:
         config: SupervisorConfig | None = None,
         sleep: Any = None,
         progress: Callable[[str], None] | None = None,
-        extract_addendum: str = "",
+        extract_addendum: str | None = None,
     ) -> None:
+        # None = the default extraction variant; pass "" explicitly for the legacy prompt
+        addendum = prompts.extract_addendum() if extract_addendum is None else extract_addendum
         self._llm = llm
         self._progress = progress or (lambda message: None)
         self._done = 0
@@ -62,9 +64,9 @@ class Supervisor:
         self._config = config or SupervisorConfig()
         self._sleep_kwargs: dict[str, Any] = {"sleep": sleep} if sleep else {}
         self._specialists: dict[AgentName, Specialist[Any]] = {
-            "literature": literature.build(llm, tools, extract_addendum),
-            "trials": trials.build(llm, tools, extract_addendum),
-            "regulatory": regulatory.build(llm, tools, extract_addendum),
+            "literature": literature.build(llm, tools, addendum),
+            "trials": trials.build(llm, tools, addendum),
+            "regulatory": regulatory.build(llm, tools, addendum),
         }
         self.graph = self._build()
 

@@ -78,10 +78,12 @@ verified claims. Rules:
 - Neutral, concise wording. Include every claim at least once if it is relevant."""
 
 
-# Named additions to the extraction prompt, compared by the eval harness. "baseline" adds nothing.
-# A variant becomes the default only if the evals show it helps.
+# Named additions to the extraction prompt, compared by the eval harness. The production default
+# is DEFAULT_EXTRACT_VARIANT. "legacy" adds nothing: it is the original prompt, and the runs the
+# eval directories label "baseline" were made with it. Change the default only when the evals
+# show a variant helps (see docs/design-decisions.md).
 EXTRACT_VARIANTS: dict[str, str] = {
-    "baseline": "",
+    "legacy": "",
     "source-terms": (
         "- Use the source's own terminology. Do not substitute, normalize or add disease, drug, "
         "stage, dose or population terms the source does not use (for example, do not write MASH "
@@ -100,6 +102,16 @@ EXTRACT_VARIANTS: dict[str, str] = {
         "If a claim needs more context than one short quote can carry, choose a narrower claim."
     ),
 }
+DEFAULT_EXTRACT_VARIANT = "no-commentary"
+
+
+def extract_addendum(variant: str | None = None) -> str:
+    """The extraction-prompt addition for ``variant`` (the default variant if None)."""
+    name = variant or DEFAULT_EXTRACT_VARIANT
+    if name not in EXTRACT_VARIANTS:
+        raise ValueError(f"unknown extraction variant {name!r}; known: {sorted(EXTRACT_VARIANTS)}")
+    return EXTRACT_VARIANTS[name]
+
 
 # Used only by the eval harness, deliberately different from CRITIC: graded, and run by a
 # different (configurable) model, so the critic is not grading its own homework.

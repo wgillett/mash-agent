@@ -19,7 +19,7 @@ from rich.panel import Panel
 from rich.status import Status
 
 from mash_agent.agents.llm import StructuredLLM
-from mash_agent.agents.prompts import EXTRACT_VARIANTS
+from mash_agent.agents.prompts import DEFAULT_EXTRACT_VARIANT, EXTRACT_VARIANTS
 from mash_agent.agents.tools import ToolCaller
 from mash_agent.evals.metrics import claim_metrics
 from mash_agent.evals.questions import DEFAULT_QUESTIONS_PATH, load_questions, select
@@ -289,7 +289,7 @@ def eval_group() -> None:
 @click.option(
     "--variant",
     type=click.Choice(sorted(EXTRACT_VARIANTS)),
-    default="baseline",
+    default=DEFAULT_EXTRACT_VARIANT,
     show_default=True,
     help="Extraction-prompt variant to evaluate.",
 )

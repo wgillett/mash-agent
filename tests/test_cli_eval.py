@@ -7,6 +7,7 @@ import pytest
 from click.testing import CliRunner, Result
 
 from mash_agent import cli as cli_module
+from mash_agent.agents.prompts import DEFAULT_EXTRACT_VARIANT
 from mash_agent.agents.tools import ToolCaller
 from mash_agent.cli import cli
 from mash_agent.evals.report import EvalReport
@@ -70,7 +71,7 @@ def test_eval_run_writes_report_summary_runs_and_spotcheck(
     for name in ("report.json", "summary.md", "spotcheck.jsonl", "runs/one.json", "runs/two.json"):
         assert (out / name).exists(), name
     report = EvalReport.model_validate_json((out / "report.json").read_text())
-    assert report.config.variant == "baseline" and report.config.canary is True
+    assert report.config.variant == DEFAULT_EXTRACT_VARIANT and report.config.canary is True
     assert report.aggregate.claims.proposed == 8 and report.canary is not None
     # the summary is also shown in the terminal
     assert "Unsupported before the critic" in result.output and "wrote" in result.output
@@ -181,7 +182,7 @@ def test_judge_model_defaults_to_opus_and_can_come_from_the_environment(
 
 @pytest.mark.usefixtures("eval_services")
 def test_compare_accepts_directories_and_report_files(questions_file: Path, tmp_path: Path) -> None:
-    for name, variant in (("a", "baseline"), ("b", "quote-anchored")):
+    for name, variant in (("a", "legacy"), ("b", "quote-anchored")):
         result = invoke(
             [
                 "eval",
@@ -208,7 +209,7 @@ def test_compare_accepts_directories_and_report_files(questions_file: Path, tmp_
     )
     for r in (by_dir, by_file):
         assert r.exit_code == 0, r.output
-        assert "Comparison" in r.output and "baseline" in r.output and "quote-anchored" in r.output
+        assert "Comparison" in r.output and "legacy" in r.output and "quote-anchored" in r.output
         assert "unsupported after critic" in r.output
 
 
@@ -245,3 +246,11 @@ def test_reports_from_older_versions_load_and_get_the_new_metrics(
     result = invoke(["eval", "compare", str(out), str(out)])
     assert result.exit_code == 0, result.output
     assert "not fully supported after critic" in result.output
+
+
+def test_eval_run_help_shows_the_default_variant_and_all_choices() -> None:
+    out = invoke(["eval", "run", "--help"]).output
+    assert f"[default: {DEFAULT_EXTRACT_VARIANT}]" in out
+    for name in ("legacy", "source-terms", "quote-anchored", "no-commentary"):
+        assert name in out
+    assert "baseline" not in out
