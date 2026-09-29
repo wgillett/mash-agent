@@ -23,7 +23,7 @@ This is a demo and learning exercise. Its purpose is to exercise production-grad
 
 ## Architecture
 
-```
+```text
 User question
      |
      v
@@ -54,16 +54,16 @@ Synthesis  -->  Human approval gate  -->  briefing.md + trace + run report
 ## Data Sources (all free, public)
 
 | API | Registration | Notes |
-|---|---|---|
+| --- | --- | --- |
 | PubMed E-utilities (NCBI) | Not required; free API key optional | ~3 req/s without key, ~10 req/s with key. Include `tool` and `email` parameters per NCBI guidelines. |
 | ClinicalTrials.gov API v2 (`/api/v2/studies`) | None | Use v2 only; the classic API is retired. Keep usage reasonable. |
 | openFDA (`/drug/label.json`) | Not required; free key optional | Lower limits without a key; much higher with one. Data is not validated for clinical use. |
 
 Rate limits above are approximate and may have changed; verify against current provider docs before building:
 
-- https://www.ncbi.nlm.nih.gov/books/NBK25497/
-- https://clinicaltrials.gov/data-api/api
-- https://open.fda.gov/apis/
+- <https://www.ncbi.nlm.nih.gov/books/NBK25497/>
+- <https://clinicaltrials.gov/data-api/api>
+- <https://open.fda.gov/apis/>
 
 ## Technical Direction
 
@@ -167,7 +167,7 @@ Before committing, `ruff check`, `ruff format --check`, `mypy`, and `pytest` mus
 
 ## Suggested Repository Layout
 
-```
+```text
 .
 ├── AGENTS.md
 ├── README.md              # overview, architecture diagram, design decisions, disclaimers

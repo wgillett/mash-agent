@@ -1,145 +1,164 @@
-# Demo script (notes to self)
+# Demo script
 
-How I run the mash-agent demo. About 5 minutes of talking, about 1 minute of waiting on the live run. Full details are in the README; this is just the order I do things in.
+A step-by-step guide to presenting mash-agent live. It takes about 5 minutes of talking plus about 1 minute of waiting on the live run, and costs about $0.30 in API calls (a little more with the optional steps).
 
-## The point of the demo
+Full details are in the README. This script tells you what to do, in what order, and what to say.
 
-One idea: **no claim gets into the briefing unless a second model call has checked it against the source text it cites.** Everything I show is either that idea working, or how I know it works.
+## What this demo is about
 
-If I only get two minutes: run the example prompt, show the approval panel, show what the critic rejected.
+The whole demo serves one idea: **no claim gets into the briefing unless a second model call has checked it against the source text it cites.** Everything you show either demonstrates that idea or shows how you know it works.
 
-## Before I start (the day before, or 15 minutes ahead)
+Short on time? With only two minutes, do steps 1, 2 and 4: run the example prompt, show the approval panel, show what the critic rejected.
 
-- [ ] Fresh terminal in the repo, on `main`, `git pull` done
-- [ ] `uv sync` done
-- [ ] `ANTHROPIC_API_KEY` and `NCBI_EMAIL` exported in *this* shell (check with `echo ${ANTHROPIC_API_KEY:+set}`)
-- [ ] Network works (PubMed, ClinicalTrials.gov and openFDA need no keys)
-- [ ] **Do one full dry run** with `--out-dir rehearsal`. It warms the on-disk API cache so retrieval is fast on stage, and it proves the key and the network work. The wording and the trials will differ on the live run; that's normal.
-- [ ] Font size up. The approval panel is wide and the tables need room.
-- [ ] Have the README open at "Latest results" and the architecture diagram in another tab
-- [ ] Optional: `eval_results/` folder handy (it's git-ignored, so only on this laptop) with the `summary.md` of the latest run
+## What you'll need
 
-**zsh gotcha:** don't paste command blocks that contain `#` comments. zsh tries to run `#` as a command, and a `;` inside the comment then makes it try to run the rest too. Keep pasted commands comment-free.
+- A laptop with the repo cloned and [uv](https://docs.astral.sh/uv/) installed
+- An Anthropic API key
+- An email address for NCBI (PubMed asks for one; no key needed)
+- A working network connection (PubMed, ClinicalTrials.gov and openFDA need no keys)
+- Optional: Docker, as a backup (see "Running it in Docker" below)
 
-## The demo
+## Before you start (the day before, or at least 15 minutes ahead)
 
-### 1. Run the example prompt (about 1 minute, about $0.30)
+1. Open a fresh terminal in the repo. Switch to `main` and run `git pull`.
+2. Run `uv sync`.
+3. Export `ANTHROPIC_API_KEY` and `NCBI_EMAIL` in *this* shell. Check the key with `echo ${ANTHROPIC_API_KEY:+set}`; it should print `set`.
+4. **Do one full dry run** with `--out-dir rehearsal` (use the command from step 1 below). This warms the on-disk API cache so retrieval is fast during the demo, and it proves the key and the network work. Expect the wording and the trials to differ on the live run; that's normal.
+5. Turn the terminal font size up. The approval panel is wide and the tables need room.
+6. Open the README at "Latest results" in one tab and the architecture diagram in another.
+7. Optional: keep the `eval_results/` folder handy, with the `summary.md` of the latest run. It's git-ignored, so it only exists on the laptop that ran the evals.
+
+> **Note (zsh):** don't paste command blocks that contain `#` comments. zsh tries to run `#` as a command, and a `;` inside the comment then makes it try to run the rest too. Keep pasted commands comment-free.
+
+## Running the demo
+
+### Step 1: Run the example prompt (about 1 minute, about $0.30)
+
+Run:
 
 ```bash
 uv run mash-agent "Summarize the current state of late-stage MASH therapies and the safety information in resmetirom's label." --out-dir demo
 ```
 
-What I say while it runs:
+While it runs, explain what's happening:
 
 - "A planner splits the question and three specialists run in parallel: literature, trials, regulatory. Each one talks to one public API through its own MCP server."
 - "Then a separate critic checks every single claim against the full text of the source it cites."
 - "Then it stops and waits for me. Nothing is saved yet."
 
-If I want something quicker: `"What safety information does the FDA label for resmetirom contain?"` takes about 30 seconds and costs about $0.08. It only needs the regulatory specialist, so the parallelism isn't visible. Use the long prompt when I want to show parallel agents.
+> **Quicker alternative:** `"What safety information does the FDA label for resmetirom contain?"` takes about 30 seconds and costs about $0.08. It only needs the regulatory specialist, so the audience won't see agents running in parallel. Use the long prompt when you want to show that.
 
-### 2. The approval panel
+### Step 2: Walk through the approval panel
 
-When the panel appears, point at:
+When the panel appears, point out:
 
-- a citation on every bullet (PMID, NCT ID, or label ID plus section)
-- "What was searched": says exactly which queries ran, and that other things may exist
-- "Coverage and limitations": says how many claims the critic excluded
+- the citation on every bullet (PMID, NCT ID, or label ID plus section)
+- "What was searched", which states exactly which queries ran and that other relevant material may exist
+- "Coverage and limitations", which states how many claims the critic excluded
 
 Say: "This is exactly what would be written to disk. I approve or reject." Then type `y`.
 
-Then the tables print: per-agent status and retries, per-stage tokens and cost, per-tool time. Say: "Cost is an estimate from list prices, and it includes retries."
+The run then prints its tables: per-agent status and retries, per-stage tokens and cost, and per-tool time. Say: "Cost is an estimate from list prices, and it includes retries."
 
-### 3. How it worked
+### Step 3: Show how it worked
+
+Open the trace:
 
 ```bash
 uv run mash-agent trace demo/trace.jsonl
 ```
 
-The span tree: parallel specialists, each attempt, every LLM call and tool call with tokens and cost. Failures would be red. Say: "It's plain OpenTelemetry, written to a file. I could send it to Langfuse, but I didn't want the demo to need an account."
+Walk through the span tree: the parallel specialists, each attempt, and every LLM call and tool call with its tokens and cost. Failures would show in red. Say: "It's plain OpenTelemetry, written to a file. I could send it to Langfuse, but I didn't want the demo to need an account."
+
+Then show the same cost table, loaded from the saved file:
 
 ```bash
 uv run mash-agent report demo/run_report.json
 ```
 
-Same cost table, from the saved file.
+### Step 4: Show what the critic rejected (the most interesting part)
 
-### 4. What the critic rejected (my favourite part)
+Run:
 
 ```bash
 uv run python -c "import json; d=json.load(open('demo/run_report.json')); [print(c['finding']['claim'], '->', c['critic_reason'], '\n') for c in d['critic']['checked'] if c['outcome']!='supported']"
 ```
 
-This prints the excluded claims with the critic's reasons. If nothing prints, that run had no exclusions; skip to the next step.
+This prints each excluded claim with the critic's reason. If nothing prints, that run had no exclusions; move on to step 5.
 
-The pattern I've seen: the extractor adds something the source doesn't say (a trial's name or phase, "biopsy-confirmed" where the source said "clinical evidence"). Say: "These are subtle. The numbers are usually right; it's the extra detail that gets caught."
+What you'll usually see: the extractor added something the source doesn't say, such as a trial's name or phase, or "biopsy-confirmed" where the source said "clinical evidence". Say: "These are subtle. The numbers are usually right; it's the extra detail that gets caught."
 
-### 5. Two short contrasts (only if there's time)
+### Step 5: Show two contrasts (only if there's time)
 
-Reject:
+**Rejection.** Run:
 
 ```bash
 uv run mash-agent "What safety information does the FDA label for resmetirom contain?" --out-dir demo-reject
 ```
 
-Answer `n`. No `briefing.md` gets written, but the run report is. Say: "Rejection is the default; only an explicit yes saves."
+Answer `n` at the approval prompt. No `briefing.md` is written, but the run report is. Say: "Rejection is the default; only an explicit yes saves."
 
-Out of scope:
+**An out-of-scope question.** Run:
 
 ```bash
 uv run mash-agent "What is the capital of France?" --out-dir demo2
 ```
 
-Verifies nothing, writes no briefing, exit code 2. Say: "There's no separate relevance filter. It just can't find anything that survives the critic." (Honest caveat: on a borderline question it could still return loosely related MASH claims.)
+It verifies nothing, writes no briefing and exits with code 2. Say: "There's no separate relevance filter. It just can't find anything that survives the critic." Be honest that on a borderline question it could still return loosely related MASH claims.
 
-### 6. How I know it works: the evals
+### Step 6: Finish with the evals
 
-Open the README "Latest results" table (or the local `summary.md`).
+Open the README "Latest results" table, or the local `summary.md`. Make three points:
 
 - The critic passed **0 of 536** deliberately corrupted claims (changed numbers, flipped directions, swapped drugs, added mortality claims).
 - A separate, different model (Opus) grades every claim independently, so the critic isn't grading itself.
-- I changed the extraction prompt to `no-commentary` because two runs of the old prompt agreed closely, and the new prompt cut wasted claims from about 6.8% to about 2%.
+- The extraction prompt was switched to `no-commentary` because two runs of the old prompt agreed closely, and the new prompt cut wasted claims from about 6.8% to about 2%.
 
-Say the caveats out loud. They make it more credible:
+Then state the caveats out loud. They make the results more credible, not less:
 
-- Single runs on 14 questions, so the intervals are optimistic.
+- These are single runs on 14 questions, so the intervals are optimistic.
 - The judge is an LLM and hasn't been checked against hand labels.
 - The evals measure accuracy, not whether a briefing is useful.
 
-## If someone asks
+## Answers to common questions
 
 - **Is this medical advice?** No. It's a demo, the footer of every briefing says so, and openFDA data isn't validated for clinical use.
-- **Why not use an existing MCP server?** I wanted stable, source-tagged outputs with the source text intact, because the verification depends on it. It's in `docs/design-decisions.md`.
-- **Does the critic catch everything?** No. It caught every blunt corruption, but about 1% of claims that reach the briefing are still only partly supported in the evals (a handful of claims), and it didn't change with the prompt.
-- **Cost?** About $0.05 for a one-specialist question, up to about $0.40 for a broad one. A full eval run is about $5.
-- **What's not done?** The trials specialist keeps some low-relevance old trials. The judge isn't calibrated by hand. Both are listed in `AGENTS.md` under follow-ups.
+- **Why not use an existing MCP server?** Verification depends on stable, source-tagged outputs with the source text intact, and writing the servers guarantees that. The reasoning is in `docs/design-decisions.md`.
+- **Does the critic catch everything?** No. It caught every blunt corruption, but in the evals about 1% of claims that reach the briefing are still only partly supported (a handful of claims), and changing the prompt didn't change that.
+- **What does it cost?** About $0.05 for a one-specialist question, up to about $0.40 for a broad one. A full eval run is about $5.
+- **What's not done?** The trials specialist keeps some low-relevance old trials, and the judge isn't calibrated against hand labels. Both are listed under follow-ups in `AGENTS.md`.
 
-## Docker version (if I can't rely on the laptop's Python setup)
+## Running it in Docker
+
+Use this if you can't rely on the laptop's Python setup. Build the image ahead of time:
 
 ```bash
 docker build -t mash-agent .
 ```
 
+Then run the demo with:
+
 ```bash
 docker run --rm -it -e ANTHROPIC_API_KEY -e NCBI_EMAIL -v "$PWD/out:/out" -v mash-cache:/cache mash-agent "What safety information does the FDA label for resmetirom contain?"
 ```
 
-`-it` is required for the approval prompt. Results land in `./out` on the laptop (the run prints the container paths, `/out/...`).
+Keep `-it`: the approval prompt needs it. Results land in `./out` on the laptop, even though the run prints container paths (`/out/...`).
 
-## If something goes wrong
+## Troubleshooting
 
-- **"ANTHROPIC_API_KEY is not set."** Exported in a different shell. Export it again here.
-- **"Overloaded" from the Anthropic API.** Happens occasionally. The pipeline retries. If it keeps happening, wait a minute and re-run.
-- **Docker: nothing to approve / "Aborted!"** Forgot `-it`. (Or use `--auto-approve`, but that skips the best part of the demo.)
-- **Docker on Linux, permission denied writing `./out`.** Add `--user "$(id -u):$(id -g)"`.
-- **The run looks slow.** First-time retrieval is slower; the rehearsal run warms the cache.
-- **Output differs from what I rehearsed.** Expected. The model and the trial retrieval vary run to run. Don't promise specific claims in advance.
+- **"ANTHROPIC_API_KEY is not set."** The key was exported in a different shell. Export it again in this one.
+- **"Overloaded" from the Anthropic API.** This happens occasionally, and the pipeline retries. If it keeps happening, wait a minute and run again.
+- **Docker: nothing to approve, or "Aborted!"** You left out `-it`. (`--auto-approve` also works, but it skips the most important part of the demo.)
+- **Docker on Linux: permission denied writing `./out`.** Add `--user "$(id -u):$(id -g)"`.
+- **The run is slow.** First-time retrieval is slower. The rehearsal run warms the cache.
+- **The output differs from the rehearsal.** That's expected: the model and the trial retrieval vary from run to run. Don't promise specific claims in advance.
 
-## Cheat sheet
+## At a glance
 
-| | Time | Cost |
-|---|---|---|
+| Run | Time | Cost |
+| --- | --- | --- |
 | Label-only question | about 30 s | about $0.08 |
 | Example prompt (all three specialists) | about 45 to 60 s | about $0.30 |
 | Full eval run (with judge and canary) | about 6 min | about $5 |
 
-(Times exclude however long I spend reviewing at the approval gate.)
+Times don't include however long you spend reviewing at the approval gate.
