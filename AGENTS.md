@@ -219,7 +219,7 @@ Before committing, `ruff check`, `ruff format --check`, `mypy`, and `pytest` mus
 5. **Observability and CLI:** tracing plus per-run token/cost/latency report. Also move the CLI from `argparse` to a Click command group (keep `mash-agent "question"` working) and add Rich terminal output: formatted briefing review at the approval gate, per-agent status table, and a progress display during runs. Tests for CLI behaviour use Click's `CliRunner`.
 6. **Evals:** fixed question set, metrics, and report.
 7. **Polish:** Dockerization, README, architecture diagram, design-decisions doc.
-8. **Optional:** CrewAI or Pydantic AI reimplementation and trade-off comparison.
+8. **Optional:** CrewAI or Pydantic AI reimplementation and trade-off comparison. **Skipped (decision, 2026-09-29):** the project is complete without it.
 
 ## Follow-ups (optional, not started)
 
@@ -232,4 +232,4 @@ Ideas noted during Milestones 1 to 7. None is required; keep scope small and fin
 - **Resilience:** back off longer on overloaded (529) errors; retry policy currently retries every exception, including deterministic ones.
 - **Observability:** export traces over OTLP (for example to Langfuse); today spans go to `trace.jsonl`.
 - **Housekeeping:** add CI (ruff, mypy, pytest) on the repository; remove the `source-terms` prompt variant, which had no measurable effect.
-- **Milestone 8** above (CrewAI or Pydantic AI reimplementation with a trade-off comparison) remains optional.
+- **Milestone 8** above (CrewAI or Pydantic AI reimplementation with a trade-off comparison) was skipped. If revisited, the plan was Pydantic AI, returning the same `WorkflowResult` type so the existing eval harness could score both implementations head to head.
