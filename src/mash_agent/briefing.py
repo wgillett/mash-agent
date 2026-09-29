@@ -38,6 +38,7 @@ def render_markdown(
     sources: dict[str, SourceDoc],
     limitations: list[str],
     generated_on: date,
+    scope: list[str] | None = None,
 ) -> str:
     lines = ["# MASH/MASLD landscape briefing", "", f"**Question:** {question}", ""]
     lines.append(f"*Generated {generated_on.isoformat()}. Not medical advice.*")
@@ -46,6 +47,13 @@ def render_markdown(
         for b in section.bullets:
             refs = " ".join(cite(sid) for sid in b.source_ids)
             lines.append(f"- {b.text} {refs}")
+    if scope:
+        lines += ["", "## What was searched", ""]
+        lines += [f"- {item}" for item in scope]
+        lines.append(
+            "- Only retrieved sources are covered; other therapies, trials or publications "
+            "may exist."
+        )
     lines += ["", "## Coverage and limitations", ""]
     lines += [f"- {item}" for item in limitations] or ["- No failures or dropped claims."]
     lines += ["", "## Sources cited", ""]

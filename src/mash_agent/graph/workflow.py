@@ -6,14 +6,15 @@ from datetime import date
 from typing import Any, Literal
 
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 from pydantic import BaseModel, Field
 
-from mash_agent.agents.critic import Critic, CriticReport
+from mash_agent.agents.critic import CheckedFinding, Critic, CriticReport
 from mash_agent.agents.llm import StructuredLLM
-from mash_agent.agents.models import Usage
-from mash_agent.agents.synthesis import Briefing, Synthesizer
+from mash_agent.agents.models import Finding, SourceDoc, SpecialistResult, SubTask, Usage
+from mash_agent.agents.synthesis import Briefing, Bullet, Section, Synthesizer
 from mash_agent.agents.tools import ToolCaller
 from mash_agent.briefing import render_markdown
 from mash_agent.graph.state import (
@@ -21,6 +22,7 @@ from mash_agent.graph.state import (
     Decision,
     GraphState,
     Plan,
+    PlannedTask,
     RunStatus,
     SpecialistInput,
     StageUsage,
@@ -28,6 +30,29 @@ from mash_agent.graph.state import (
 from mash_agent.graph.supervisor import Supervisor, SupervisorConfig
 
 WorkflowStatus = Literal["approved", "rejected", "no_verified_claims"]
+
+# Pydantic models that live in graph state and are therefore (de)serialized by the checkpointer.
+# Listed explicitly so LangGraph's msgpack allowlist stays strict; a test fails if one is missing.
+CHECKPOINT_TYPES: tuple[tuple[str, str], ...] = tuple(
+    (cls.__module__, cls.__name__)
+    for cls in (
+        Plan,
+        PlannedTask,
+        AgentOutcome,
+        SubTask,
+        SpecialistResult,
+        SourceDoc,
+        Finding,
+        Usage,
+        StageUsage,
+        CriticReport,
+        CheckedFinding,
+        Briefing,
+        Section,
+        Bullet,
+        Decision,
+    )
+)
 
 
 class ApprovalRequest(BaseModel):
@@ -63,6 +88,26 @@ class WorkflowResult(BaseModel):
         for s in self.stage_usage:
             total += s.usage
         return total
+
+
+SCOPE_LABELS = {
+    "literature": "PubMed query",
+    "trials": "ClinicalTrials.gov (Phase 2/3) condition query",
+    "regulatory": "openFDA label lookup for",
+}
+
+
+def build_scope(outcomes: list[AgentOutcome]) -> list[str]:
+    """What each specialist actually searched, so readers can see the briefing's boundaries."""
+    items: list[str] = []
+    for o in outcomes:
+        if o.result:
+            r = o.result
+            items.append(
+                f"{SCOPE_LABELS[o.agent]}: {'; '.join(r.queries)} "
+                f"({len(r.sources)} sources retrieved, {len(r.findings)} claims proposed)"
+            )
+    return items
 
 
 def build_limitations(
@@ -157,6 +202,7 @@ class Workflow:
             sources=sources,
             limitations=limitations,
             generated_on=self._today(),
+            scope=build_scope(outcomes),
         )
         return {
             "briefing": briefing,
@@ -192,7 +238,8 @@ class Workflow:
         graph.add_conditional_edges("critic", self._after_critic, ["synthesize", END])
         graph.add_edge("synthesize", "approval")
         graph.add_edge("approval", END)
-        return graph.compile(checkpointer=MemorySaver())
+        serde = JsonPlusSerializer(allowed_msgpack_modules=list(CHECKPOINT_TYPES))
+        return graph.compile(checkpointer=MemorySaver(serde=serde))
 
     # ---- entry point -------------------------------------------------------------------------
 

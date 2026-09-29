@@ -4,6 +4,7 @@ import re
 from datetime import date
 
 import httpx
+import pytest
 from pydantic import BaseModel
 
 from mash_agent.agents.critic import ClaimVerdict, SourceVerdicts
@@ -98,6 +99,10 @@ async def test_approved_run_contains_only_critic_passed_claims(all_tools: ToolCa
         assert f"Summary: {claim}" in md
     assert "[PMID:38324483](https://pubmed.ncbi.nlm.nih.gov/38324483/)" in md
     assert "The critic excluded 1 of 4 claims" in md and "Generated 2026-09-29" in md
+    assert "## What was searched" in md
+    assert "openFDA label lookup for: Rezdiffra (4 sources retrieved" in md
+    assert "PubMed query: resmetirom AND MASH (5 sources retrieved" in md
+    assert "Only retrieved sources are covered" in md
     # the gate saw exactly what would be published
     (request,) = human.requests
     assert request.markdown == md
@@ -161,3 +166,14 @@ async def test_usage_is_tracked_per_stage_including_planner(all_tools: ToolCalle
         "synthesis": 10,
     }
     assert result.total_usage.input_tokens == 110
+
+
+async def test_checkpoint_types_are_all_registered(
+    all_tools: ToolCaller, caplog: pytest.LogCaptureFixture
+) -> None:
+    """LangGraph warns (and will later block) when state holds an unregistered type."""
+    with caplog.at_level("WARNING"):
+        await workflow(FunctionLLM(handler_with(bad_lit_claim=True)), all_tools).run(
+            QUESTION, Recorder(Decision(approved=True))
+        )
+    assert [r.message for r in caplog.records if "unregistered type" in r.message] == []
