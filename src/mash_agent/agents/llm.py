@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from langchain_anthropic import ChatAnthropic
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel
 
@@ -43,16 +44,26 @@ def unpack[T: BaseModel](schema: type[T], out: dict[str, Any]) -> Generated[T]:
 
 
 class AnthropicLLM:
-    """Claude via langchain-anthropic. Model comes from ``MASH_AGENT_MODEL`` unless given."""
+    """Claude via langchain-anthropic. Model comes from ``MASH_AGENT_MODEL`` unless given.
 
-    def __init__(self, model: str | None = None, max_tokens: int = 4096) -> None:
+    Uses native structured outputs (``output_config.format``) rather than forced tool calling:
+    newer models (e.g. claude-sonnet-5-5) reject ``tool_choice`` of type ``tool``/``any`` with a
+    400, and langchain-anthropic's default ``function_calling`` method sends exactly that.
+    """
+
+    def __init__(
+        self,
+        model: str | None = None,
+        max_tokens: int = 4096,
+        chat: BaseChatModel | None = None,
+    ) -> None:
         self.model = model or os.environ.get(MODEL_ENV_VAR, DEFAULT_MODEL)
-        self._chat = ChatAnthropic(model=self.model, max_tokens=max_tokens)  # type: ignore[call-arg]
+        self._chat = chat or ChatAnthropic(model=self.model, max_tokens=max_tokens)  # type: ignore[call-arg]
 
     async def generate[T: BaseModel](
         self, schema: type[T], *, system: str, user: str
     ) -> Generated[T]:
-        runnable = self._chat.with_structured_output(schema, include_raw=True)
+        runnable = self._chat.with_structured_output(schema, include_raw=True, method="json_schema")
         messages: list[BaseMessage] = [SystemMessage(system), HumanMessage(user)]
         out = await runnable.ainvoke(messages)
         return unpack(schema, dict(out))
