@@ -90,6 +90,10 @@ def test_claim_metrics_hand_computed() -> None:
     assert (m.unsupported_caught, m.unsupported_missed) == (2, 1)
     assert (m.critic_false_reject.num, m.critic_false_reject.den) == (1, 6)
     assert (m.exclusion_rate.num, m.exclusion_rate.den) == (3, 11)
+    # not fully supported = partial or unsupported: 4 judged; the critic excluded 2 of them
+    assert (m.critic_recall_partial.num, m.critic_recall_partial.den) == (2, 4)
+    # of the 7 claims that reached the briefing, 2 are not fully supported (partial, unsupported)
+    assert (m.not_fully_supported_after.num, m.not_fully_supported_after.den) == (2, 7)
     assert (m.quote_verified.num, m.quote_verified.den) == (10, 11)
 
 

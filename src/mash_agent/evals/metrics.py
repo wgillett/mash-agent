@@ -135,6 +135,14 @@ class ClaimMetrics(BaseModel):
     critic_recall: Rate = Field(description="Judge-unsupported claims the critic excluded.")
     critic_false_reject: Rate = Field(description="Judge-supported claims the critic excluded.")
     exclusion_rate: Rate = Field(description="Proposed claims the critic excluded, for any reason.")
+    not_fully_supported_after: Rate = Field(
+        default_factory=lambda: Rate(num=0, den=0),
+        description="Judge: partial or unsupported among critic-passed claims (residual error).",
+    )
+    critic_recall_partial: Rate = Field(
+        default_factory=lambda: Rate(num=0, den=0),
+        description="Judge partial-or-unsupported claims the critic excluded.",
+    )
     unsupported_caught: int
     unsupported_missed: int
 
@@ -145,6 +153,7 @@ def claim_metrics(records: list[ClaimRecord]) -> ClaimMetrics:
     unsupported = [r for r in judged if r.judge == "unsupported"]
     caught = [r for r in unsupported if r.critic != "supported"]
     supported = [r for r in judged if r.judge == "supported"]
+    not_full = [r for r in judged if r.judge in ("partial", "unsupported")]
     return ClaimMetrics(
         proposed=len(records),
         judged=len(judged),
@@ -167,6 +176,12 @@ def claim_metrics(records: list[ClaimRecord]) -> ClaimMetrics:
             num=sum(r.critic != "supported" for r in supported), den=len(supported)
         ),
         exclusion_rate=Rate(num=sum(r.critic != "supported" for r in records), den=len(records)),
+        not_fully_supported_after=Rate(
+            num=sum(r.judge != "supported" for r in passed), den=len(passed)
+        ),
+        critic_recall_partial=Rate(
+            num=sum(r.critic != "supported" for r in not_full), den=len(not_full)
+        ),
         unsupported_caught=len(caught),
         unsupported_missed=len(unsupported) - len(caught),
     )

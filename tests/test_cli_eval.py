@@ -219,3 +219,29 @@ def test_the_real_question_file_is_the_default(eval_services: None, tmp_path: Pa
     assert result.exit_code == 0, result.output
     report = json.loads((tmp_path / "o" / "report.json").read_text())
     assert report["config"]["question_ids"] == ["label-safety"]
+
+
+@pytest.mark.usefixtures("eval_services")
+def test_reports_from_older_versions_load_and_get_the_new_metrics(
+    questions_file: Path, tmp_path: Path
+) -> None:
+    out = tmp_path / "old"
+    invoke(
+        [
+            "eval",
+            "run",
+            "--questions",
+            str(questions_file),
+            "--out-dir",
+            str(out),
+            "--yes",
+            "--no-canary",
+        ]
+    )
+    data = json.loads((out / "report.json").read_text())
+    for field in ("not_fully_supported_after", "critic_recall_partial"):
+        del data["aggregate"]["claims"][field]  # what an earlier version's file looks like
+    (out / "report.json").write_text(json.dumps(data))
+    result = invoke(["eval", "compare", str(out), str(out)])
+    assert result.exit_code == 0, result.output
+    assert "not fully supported after critic" in result.output

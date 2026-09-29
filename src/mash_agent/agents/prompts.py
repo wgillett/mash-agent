@@ -88,6 +88,13 @@ EXTRACT_VARIANTS: dict[str, str] = {
         "where the source says NAFLD or NASH). If the source is imprecise, report it as the "
         "source says it."
     ),
+    "no-commentary": (
+        "- State only what the source states. Do not add interpretation, grouping, "
+        "categorization or characterization (for example, do not label reactions "
+        "'gastrointestinal' or a risk 'hepatobiliary' unless the source does), no parenthetical "
+        "asides, and no claims about what a source does not say or about other sources. Every "
+        "claim must be a positive statement from its single source."
+    ),
     "quote-anchored": (
         "- Every number, drug, population and qualifier in `claim` must also appear in `evidence`. "
         "If a claim needs more context than one short quote can carry, choose a narrower claim."

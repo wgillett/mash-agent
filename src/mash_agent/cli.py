@@ -21,6 +21,7 @@ from rich.status import Status
 from mash_agent.agents.llm import StructuredLLM
 from mash_agent.agents.prompts import EXTRACT_VARIANTS
 from mash_agent.agents.tools import ToolCaller
+from mash_agent.evals.metrics import claim_metrics
 from mash_agent.evals.questions import DEFAULT_QUESTIONS_PATH, load_questions, select
 from mash_agent.evals.report import EvalReport, compare, render_markdown
 from mash_agent.evals.runner import run_eval, write_artifacts
@@ -378,7 +379,10 @@ def eval_run(
 
 def _load_report(path: Path) -> EvalReport:
     file = path / "report.json" if path.is_dir() else path
-    return EvalReport.model_validate_json(file.read_text())
+    report = EvalReport.model_validate_json(file.read_text())
+    # Reports written by earlier versions lack newer metrics; recompute from the raw claim records.
+    report.aggregate.claims = claim_metrics(report.claims)
+    return report
 
 
 @eval_group.command("compare")

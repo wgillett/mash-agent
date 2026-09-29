@@ -273,35 +273,59 @@ async def test_artifacts_round_trip_and_spotcheck_prioritises_disagreements(
     assert spotcheck_sample(report, artifacts, 5) == rows  # deterministic
 
 
-async def test_compare_flags_noise_versus_real_differences(all_tools: ToolCaller) -> None:
+async def test_compare_uses_an_interval_for_the_difference_not_ci_overlap(
+    all_tools: ToolCaller,
+) -> None:
     from mash_agent.evals.metrics import Rate
+    from mash_agent.evals.report import newcombe_difference
 
     base, _ = await evaluate(all_tools)
 
+    def row(text: str, name: str) -> str:
+        return next(line for line in text.splitlines() if line.startswith(f"| {name}"))
+
+    def variant_with(num: int, den: int, ref: tuple[int, int]) -> tuple[EvalReport, EvalReport]:
+        a, b = base.model_copy(deep=True), base.model_copy(deep=True)
+        a.aggregate.claims.exclusion_rate = Rate(num=ref[0], den=ref[1])
+        b.aggregate.claims.exclusion_rate = Rate(num=num, den=den)
+        return a, b
+
+    name = "claims excluded by critic"
+
+    # identical reports: no difference
     same = compare(base, base)
-    assert "within noise" in same and "different question sets" not in same
-    assert "CIs do not overlap" not in same
+    assert "not distinguishable from noise" in same and "different question sets" not in same
 
-    # a big shift on a large sample is a real difference ...
-    big = base.model_copy(deep=True)
-    base_ref = base.model_copy(deep=True)
-    base_ref.aggregate.claims.unsupported_after = Rate(num=2, den=200)
-    big.aggregate.claims.unsupported_after = Rate(num=40, den=200)
-    text = compare(base_ref, big)
-    assert "| unsupported after critic |" in text
-    row = next(line for line in text.splitlines() if line.startswith("| unsupported after critic"))
-    assert "+19.0%" in row and "CIs do not overlap" in row
+    # a large shift is unlikely to be chance
+    a, b = variant_with(40, 200, (2, 200))
+    assert "unlikely to be chance" in row(compare(a, b), name)
 
-    # ... while one extra bad claim out of the same 200 is noise
-    small = base.model_copy(deep=True)
-    small.aggregate.claims.unsupported_after = Rate(num=3, den=200)
-    row = next(
-        line
-        for line in compare(base_ref, small).splitlines()
-        if line.startswith("| unsupported after critic")
-    )
-    assert "+0.5%" in row and "within noise" in row
+    # one extra claim out of the same 200 is noise
+    a, b = variant_with(3, 200, (2, 200))
+    assert "not distinguishable from noise" in row(compare(a, b), name)
 
+    # The reason for not using CI overlap: 40/200 vs 22/200 have overlapping Wilson intervals
+    # (about 15-26% and 7.4-16%) yet the difference is unlikely to be chance.
+    r0, r1 = Rate(num=40, den=200), Rate(num=22, den=200)
+    assert r1.ci_high is not None and r0.ci_low is not None and r1.ci_high > r0.ci_low
+    diff = newcombe_difference(r0, r1)
+    assert diff is not None and diff[2] < 0  # upper bound below zero
+    a, b = variant_with(22, 200, (40, 200))
+    assert "unlikely to be chance" in row(compare(a, b), name)
+
+    # borderline: halving 19/259 to 9/259 does not clearly exclude zero
+    diff = newcombe_difference(Rate(num=19, den=259), Rate(num=9, den=259))
+    assert diff is not None and diff[1] < -0.05 and diff[2] > 0
+
+    assert newcombe_difference(Rate(num=0, den=0), Rate(num=1, den=2)) is None
     other = base.model_copy(deep=True)
     other.config.question_ids = ["x"]
     assert "different question sets" in compare(base, other)
+
+
+async def test_variant_names_include_the_commentary_variant() -> None:
+    from mash_agent.agents.prompts import EXTRACT_VARIANTS
+
+    assert set(EXTRACT_VARIANTS) == {"baseline", "source-terms", "quote-anchored", "no-commentary"}
+    assert EXTRACT_VARIANTS["baseline"] == ""
+    assert "positive statement" in EXTRACT_VARIANTS["no-commentary"]

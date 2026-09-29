@@ -1,12 +1,20 @@
 """Eval report: machine-readable model, short human-readable summary, and run comparison."""
 
+import math
 import statistics
 from collections import defaultdict
 
 from pydantic import BaseModel, Field
 
 from mash_agent.evals.canary import Miss, MutationStats
-from mash_agent.evals.metrics import ClaimMetrics, ClaimRecord, Rate, RunMetrics, claim_metrics
+from mash_agent.evals.metrics import (
+    ClaimMetrics,
+    ClaimRecord,
+    Rate,
+    RunMetrics,
+    claim_metrics,
+    wilson,
+)
 
 
 class EvalConfig(BaseModel):
@@ -125,13 +133,15 @@ def render_markdown(report: EvalReport) -> str:
         f"| Not fully supported before the critic | {c.not_fully_supported_before.text()} |",
         f"| Claims that reached the briefing | {c.passed} |",
         f"| **Unsupported after the critic** | {c.unsupported_after.text()} |",
+        f"| **Not fully supported after the critic** | {c.not_fully_supported_after.text()} |",
         "| **Citation accuracy, strict** (fully supported) | "
         f"{c.citation_accuracy_strict.text()} |",
         "| Citation accuracy, lenient (supported or partial) | "
         f"{c.citation_accuracy_lenient.text()} |",
         f"| Unsupported claims caught by the critic | {c.unsupported_caught} of "
         f"{c.unsupported_caught + c.unsupported_missed} |",
-        f"| Critic recall | {c.critic_recall.text()} |",
+        f"| Critic recall on unsupported claims | {c.critic_recall.text()} |",
+        f"| Critic recall on not-fully-supported claims | {c.critic_recall_partial.text()} |",
         f"| Critic false rejects (good claims excluded) | {c.critic_false_reject.text()} |",
         f"| Claims excluded by the critic (any reason) | {c.exclusion_rate.text()} |",
     ]
@@ -189,14 +199,39 @@ def render_markdown(report: EvalReport) -> str:
     return "\n".join(lines)
 
 
+def newcombe_difference(r0: Rate, r1: Rate) -> tuple[float, float, float] | None:
+    """(difference r1-r0, low, high): Newcombe's hybrid score interval for two proportions."""
+    if not r0.den or not r1.den:
+        return None
+    p0, p1 = r0.num / r0.den, r1.num / r1.den
+    l0, u0 = wilson(r0.num, r0.den)
+    l1, u1 = wilson(r1.num, r1.den)
+    d = p1 - p0
+    low = d - math.sqrt((p1 - l1) ** 2 + (u0 - p0) ** 2)
+    high = d + math.sqrt((u1 - p1) ** 2 + (p0 - l0) ** 2)
+    return d, low, high
+
+
+def difference_text(r0: Rate, r1: Rate) -> str:
+    diff = newcombe_difference(r0, r1)
+    if diff is None:
+        return "n/a"
+    d, low, high = diff
+    verdict = "unlikely to be chance" if low > 0 or high < 0 else "not distinguishable from noise"
+    return f"{d:+.1%} (95% CI {low:+.1%} to {high:+.1%}; {verdict})"
+
+
 def _rate_rows(report: EvalReport) -> list[tuple[str, Rate]]:
     a, c = report.aggregate, report.aggregate.claims
     rows = [
         ("unsupported before critic", c.unsupported_before),
         ("unsupported after critic", c.unsupported_after),
+        ("not fully supported before critic", c.not_fully_supported_before),
+        ("not fully supported after critic", c.not_fully_supported_after),
         ("citation accuracy (strict)", c.citation_accuracy_strict),
         ("citation accuracy (lenient)", c.citation_accuracy_lenient),
-        ("critic recall", c.critic_recall),
+        ("critic recall (unsupported)", c.critic_recall),
+        ("critic recall (not fully supported)", c.critic_recall_partial),
         ("critic false rejects", c.critic_false_reject),
         ("claims excluded by critic", c.exclusion_rate),
         ("quotes verbatim", c.quote_verified),
@@ -217,15 +252,7 @@ def compare(base: EvalReport, other: EvalReport) -> str:
         "|---|---|---|---|",
     ]
     for (name, r0), (_, r1) in zip(_rate_rows(base), _rate_rows(other), strict=False):
-        if r0.value is None or r1.value is None:
-            verdict = "n/a"
-        else:
-            overlap = not (
-                r0.ci_high is not None and r1.ci_low is not None and r0.ci_high < r1.ci_low
-            ) and not (r1.ci_high is not None and r0.ci_low is not None and r1.ci_high < r0.ci_low)
-            delta = r1.value - r0.value
-            verdict = f"{delta:+.1%} ({'within noise' if overlap else 'CIs do not overlap'})"
-        lines.append(f"| {name} | {r0.text()} | {r1.text()} | {verdict} |")
+        lines.append(f"| {name} | {r0.text()} | {r1.text()} | {difference_text(r0, r1)} |")
     a0, a1 = base.aggregate, other.aggregate
     lines += [
         f"| claims proposed | {a0.claims.proposed} | {a1.claims.proposed} | "
@@ -242,8 +269,12 @@ def compare(base: EvalReport, other: EvalReport) -> str:
         f"| mean latency | {a0.latency_mean_s:.1f}s | {a1.latency_mean_s:.1f}s | "
         f"{a1.latency_mean_s - a0.latency_mean_s:+.1f}s |",
         "",
-        "Only runs of the same questions are comparable. Model output varies run to run, so a "
-        "single comparison can mislead; repeat runs before acting on small differences.",
+        "Difference = second minus first, with a 95% interval (Newcombe). If the interval excludes "
+        "zero the change is unlikely to be chance alone; otherwise it cannot be told from noise. "
+        "Claims are not independent (the same claim recurs across questions, and several come "
+        "from one source), so the intervals are optimistic. Only runs of the same questions are "
+        "comparable, and model output varies run to run: repeat before acting on small "
+        "differences.",
         "",
     ]
     if base.config.question_ids != other.config.question_ids:

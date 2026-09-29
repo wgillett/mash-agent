@@ -107,12 +107,14 @@ Short notes on non-obvious choices. Extended as milestones land.
   every cited source was retrieved, every claim was critic-passed), advice-like phrases, topic
   coverage terms, and out-of-scope handling (`expect_no_claims`). Coverage terms are a coarse
   proxy, not correctness.
-- **Honest statistics:** every rate is reported with counts and a 95% Wilson interval, and
-  `compare` says "within noise" when intervals overlap. With a few hundred claims and a
-  low error rate, one run cannot resolve small differences; the higher-base-rate metric
-  (not fully supported before the critic) has the most resolving power. Model output varies run
-  to run; repeat before acting on small gaps. Runs within a day also share the on-disk API cache,
-  so variants see the same retrieved records when their queries match.
+- **Honest statistics:** every rate is reported with counts and a 95% Wilson interval. `compare`
+  reports the difference between two runs with a Newcombe interval and says whether it excludes
+  zero. (An earlier version called a difference "noise" whenever the two runs' intervals overlapped;
+  that is too conservative, since overlapping intervals can still hide a real difference.) Claims are
+  not independent: the same claim recurs across questions and several come from one source, so
+  intervals are optimistic. Model output varies run to run; repeat before acting on small gaps.
+  Runs within a day also share the on-disk API cache, so variants see the same retrieved records
+  when their queries match.
 - **Failures are data:** a question that crashes is recorded as `crashed`; unjudgeable claims are
   `unjudged` and excluded from rates (never counted as right or wrong); costs are reported for the
   system and separately for eval overhead (judge, canary).
@@ -121,4 +123,16 @@ Short notes on non-obvious choices. Extended as milestones land.
   without cutting useful claims. Two are defined: `source-terms` (keep the source's own
   terminology; motivated by a real run where the extractor wrote "NAFLD/MASH" over a source that
   said NAFLD and the critic rightly excluded it) and `quote-anchored` (every number, drug,
-  population and qualifier in a claim must appear in its quote).
+  population and qualifier in a claim must appear in its quote), and `no-commentary` (state only
+  what the source states: no interpretation, grouping, parenthetical asides, or claims about what a
+  source does not say or about other sources). The third was added after the first full baseline
+  run, in which the critic excluded 19 of 259 claims: about half were interpretive glosses ("the
+  adverse reactions are gastrointestinal") or absence and cross-source claims ("the provided
+  Rezdiffra sections contain no GLP-1 information"), and most of the rest added outside knowledge
+  (a trial's name or phase, "biopsy-confirmed" where the source said "clinical evidence").
+- **What the first baseline showed** (14 questions, 259 claims): the judge rated no claim
+  unsupported, so critic recall on unsupported claims is undefined; 13 claims (5.0%) were partial,
+  the critic excluded 11 of them, and 2 reached the briefing (0.8% residual). The critic passed
+  0 of 536 deliberately corrupted claims. The critic was stricter than the judge on 8 claims (mostly
+  glosses and absence claims). The informative metrics are therefore the not-fully-supported rate
+  before and after the critic and the exclusion rate, not the unsupported rate.
