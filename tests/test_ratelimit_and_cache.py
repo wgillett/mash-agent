@@ -119,3 +119,21 @@ def test_expired_entry_is_deleted_on_read(tmp_path: pytest.TempPathFactory) -> N
     DiskCache(tmp_path).set("k", 1)  # type: ignore[arg-type]
     assert DiskCache(tmp_path, ttl_seconds=-1).get("k") is None  # type: ignore[arg-type]
     assert list(tmp_path.iterdir()) == []  # type: ignore[attr-defined]
+
+
+async def test_a_failing_cache_write_does_not_fail_the_call(
+    tmp_path: pytest.TempPathFactory, caplog: pytest.LogCaptureFixture
+) -> None:
+    class ReadOnlyCache(DiskCache):
+        def set(self, key: str, value: object) -> None:
+            raise PermissionError("read-only file system")
+
+    client = ApiClient(
+        "https://example.test",
+        RateLimiter(1000),
+        cache=ReadOnlyCache(tmp_path),  # type: ignore[arg-type]
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"ok": 1})),
+    )
+    with caplog.at_level("WARNING"):
+        assert await client.get_json("/x", {}) == {"ok": 1}
+    assert any("cache write failed" in r.message for r in caplog.records)

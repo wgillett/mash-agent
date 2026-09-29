@@ -226,3 +226,13 @@ def test_real_service_construction_then_quieting(
     cli_module.set_log_level(True)
     assert logging.getLogger("httpx2").isEnabledFor(logging.INFO) is True
     cli_module.set_log_level(False)
+
+
+@pytest.mark.usefixtures("services")
+def test_out_dir_can_come_from_the_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MASH_AGENT_OUT_DIR", str(tmp_path / "from-env"))
+    result = CliRunner().invoke(cli, [QUESTION, "--auto-approve"], env={"COLUMNS": "140"})
+    assert result.exit_code == EXIT_APPROVED, result.output
+    assert (tmp_path / "from-env" / "briefing.md").exists()
