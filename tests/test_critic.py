@@ -130,3 +130,38 @@ async def test_no_findings_no_calls(n: int) -> None:
     llm = FunctionLLM(verdicts_by_marker)
     report = await critic(llm).check([], {})
     assert report.checked == [] and llm.calls == []
+
+
+async def test_concurrency_is_limited_to_max_parallel() -> None:
+    import asyncio
+
+    state = {"now": 0, "peak": 0}
+
+    async def handler(schema: type[BaseModel], system: str, user: str) -> BaseModel:
+        state["now"] += 1
+        state["peak"] = max(state["peak"], state["now"])
+        await asyncio.sleep(0.01)
+        state["now"] -= 1
+        return verdicts_by_marker(schema, system, user)
+
+    ids = [f"PMID:{i}" for i in range(1, 7)]
+    report = await critic(FunctionLLM(handler), max_parallel=2).check(
+        [finding("c", i) for i in ids], {i: source(i, "t") for i in ids}
+    )
+    assert state["peak"] == 2
+    assert [c.outcome for c in report.checked] == ["supported"] * 6
+
+
+async def test_waiting_for_a_slot_does_not_count_against_the_timeout() -> None:
+    import asyncio
+
+    async def handler(schema: type[BaseModel], system: str, user: str) -> BaseModel:
+        await asyncio.sleep(0.05)  # each call fits the timeout; queueing behind others would not
+        return verdicts_by_marker(schema, system, user)
+
+    ids = [f"PMID:{i}" for i in range(1, 5)]
+    report = await critic(
+        FunctionLLM(handler), max_parallel=1, timeout_s=0.12, max_attempts=1
+    ).check([finding("c", i) for i in ids], {i: source(i, "t") for i in ids})
+    assert [c.outcome for c in report.checked] == ["supported"] * 4  # 4 x 0.05s > 0.12s total
+    assert report.notes == []

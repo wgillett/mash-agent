@@ -37,6 +37,7 @@ class SupervisorConfig:
     max_attempts: int = 3
     backoff_s: float = 1.0
     max_parallel: int = 3
+    critic_max_parallel: int = 8  # concurrent critic calls (one per cited source)
 
 
 def default_plan(question: str) -> Plan:

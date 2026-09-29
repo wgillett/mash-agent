@@ -171,6 +171,7 @@ class Workflow:
             timeout_s=cfg.specialist_timeout_s,
             max_attempts=cfg.max_attempts,
             backoff_s=cfg.backoff_s,
+            max_parallel=cfg.critic_max_parallel,
             sleep=sleep,
         )
         self._synth = Synthesizer(

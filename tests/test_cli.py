@@ -196,3 +196,33 @@ def test_report_and_trace_fail_cleanly_on_missing_file(tmp_path: Path) -> None:
     for command in ("report", "trace"):
         result = invoke([command, str(tmp_path / "nope.json")])
         assert result.exit_code == 2 and "does not exist" in result.output
+
+
+def test_http_logging_is_silenced_even_though_building_servers_reconfigures_it(
+    all_tools: ToolCaller, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Regression: creating an MCP server sets the root logger to INFO (and installs a handler).
+    Silencing must run after that, or every HTTP request is logged over the status line."""
+
+    def build() -> tuple[FunctionLLM, ToolCaller]:
+        logging.getLogger().setLevel(logging.INFO)  # what mcp's server setup does
+        logging.getLogger("httpx2").setLevel(logging.NOTSET)
+        return FunctionLLM(handler_with()), all_tools
+
+    monkeypatch.setattr(cli_module, "build_services", build)
+    invoke([QUESTION, "--out-dir", str(tmp_path), "--auto-approve"])
+    assert logging.getLogger().level == logging.WARNING
+    assert logging.getLogger("httpx2").level == logging.WARNING  # the Anthropic SDK's logger
+
+
+def test_real_service_construction_then_quieting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    cli_module.build_services()  # builds the real MCP servers (no network calls)
+    cli_module.set_log_level(False)
+    assert logging.getLogger().isEnabledFor(logging.INFO) is False
+    assert logging.getLogger("httpx2").isEnabledFor(logging.INFO) is False
+    cli_module.set_log_level(True)
+    assert logging.getLogger("httpx2").isEnabledFor(logging.INFO) is True
+    cli_module.set_log_level(False)

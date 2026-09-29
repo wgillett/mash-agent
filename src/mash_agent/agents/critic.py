@@ -80,9 +80,15 @@ class Critic:
         groups: dict[str, list[Finding]] = defaultdict(list)
         for f in findings:
             groups[f.source_id].append(f)
-        results = await asyncio.gather(
-            *(self._check_source(sid, fs, sources.get(sid)) for sid, fs in groups.items())
-        )
+
+        async def guarded(
+            sid: str, fs: list[Finding]
+        ) -> tuple[list[CheckedFinding], Usage, str | None]:
+            # Wait for a slot *before* the span/timeout start, so neither counts queueing time.
+            async with self._semaphore:
+                return await self._check_source(sid, fs, sources.get(sid))
+
+        results = await asyncio.gather(*(guarded(sid, fs) for sid, fs in groups.items()))
         report = CriticReport(checked=[])
         for checked, usage, note in results:
             report.checked.extend(checked)
@@ -112,12 +118,9 @@ class Critic:
             return all_as("unchecked", "cited source was never retrieved"), Usage(), None
 
         async def call() -> tuple[SourceVerdicts, Usage]:
-            async with self._semaphore:
-                out = await self._llm.generate(
-                    SourceVerdicts,
-                    system=prompts.CRITIC,
-                    user=render_check_prompt(source, claims),
-                )
+            out = await self._llm.generate(
+                SourceVerdicts, system=prompts.CRITIC, user=render_check_prompt(source, claims)
+            )
             return out.value, out.usage
 
         attempt = await run_resilient(

@@ -144,9 +144,14 @@ def build_services() -> tuple[StructuredLLM, ToolCaller]:
 
 
 def set_log_level(verbose: bool) -> None:
-    """Library HTTP logging is noise unless asked for."""
+    """Library HTTP logging is noise unless asked for.
+
+    Must run after ``build_services``: creating an MCP server installs a root ``RichHandler`` and
+    sets the root level to INFO. The Anthropic SDK logs through ``httpx2``, not ``httpx``.
+    """
     level = logging.INFO if verbose else logging.WARNING
-    for name in ("httpx", "httpcore", "anthropic", "mcp"):
+    logging.getLogger().setLevel(level)
+    for name in ("httpx", "httpx2", "httpcore", "anthropic", "mcp"):
         logging.getLogger(name).setLevel(level)
 
 
@@ -188,9 +193,9 @@ def run_command(
     question: str, out_dir: Path, auto_approve: bool, no_trace: bool, verbose: bool
 ) -> None:
     """Answer QUESTION with a verified, cited briefing and ask for approval before saving it."""
-    set_log_level(verbose)
     console = Console()
     llm, tools = build_services()
+    set_log_level(verbose)  # after build_services, which reconfigures logging
     reporter = Reporter(console)
     decide = auto_approve_decide() if auto_approve else interactive_decide(reporter)
     reporter.start()
