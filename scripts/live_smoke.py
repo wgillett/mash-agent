@@ -114,6 +114,15 @@ async def main_async(out_dir: Path) -> int:
         report.check("sponsors present", any(t.sponsor for t in res.trials))
         report.check("primary endpoints present", any(t.primary_endpoints for t in res.trials))
 
+        broad = 'MASH OR NASH OR "metabolic dysfunction-associated steatohepatitis"'
+        res2 = await clinicaltrials.search_trials(client, broad, max_results=20)
+        report.check(
+            "OR condition query returns trials", len(res2.trials) > 0, str(len(res2.trials))
+        )
+        liver = re.compile(r"MASH|NASH|steato|fatty liver|MASLD|NAFLD", re.I)
+        offtopic = [t.nct_id for t in res2.trials if not liver.search(t.title)]
+        report.check("OR query titles are liver-related", not offtopic, f"off-topic: {offtopic}")
+
     async def fda_body(client: ApiClient) -> None:
         for drug in ("Rezdiffra", "resmetirom"):
             res = await openfda.get_drug_labels(client, drug)
