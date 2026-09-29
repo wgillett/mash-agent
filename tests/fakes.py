@@ -40,11 +40,13 @@ class FunctionLLM:
         self._handler = handler
         self._tokens = tokens
         self.calls: list[tuple[str, str]] = []  # (schema name, system prompt)
+        self.users: list[str] = []
 
     async def generate[T: BaseModel](
         self, schema: type[T], *, system: str, user: str
     ) -> Generated[T]:
         self.calls.append((schema.__name__, system))
+        self.users.append(user)
         out = self._handler(schema, system, user)
         if inspect.isawaitable(out):
             out = await out
