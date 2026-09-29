@@ -1,6 +1,7 @@
 """Full workflow: specialists -> critic -> synthesis -> human approval gate."""
 
 import re
+from collections.abc import Callable
 from datetime import date
 
 import httpx
@@ -21,7 +22,9 @@ from tests.test_specialists import NEJM_QUOTE
 from tests.test_supervisor import QUESTION, happy, no_sleep
 
 
-def handler_with(bad_lit_claim: bool = False, critic_rejects_all: bool = False):  # type: ignore[no-untyped-def]
+def handler_with(
+    bad_lit_claim: bool = False, critic_rejects_all: bool = False
+) -> Callable[[type[BaseModel], str, str], BaseModel]:
     def handler(schema: type[BaseModel], system: str, user: str) -> BaseModel:
         if schema is ExtractedFindings and "PubMed abstracts" in system and bad_lit_claim:
             good = happy(schema, system, user)
@@ -153,9 +156,8 @@ async def test_usage_is_tracked_per_stage_including_planner(all_tools: ToolCalle
     result = await workflow(FunctionLLM(handler_with()), all_tools).run(
         QUESTION, Recorder(Decision(approved=True))
     )
-    by_stage: dict[str, int] = {}
-    for s in result.stage_usage:
-        by_stage[s.stage] = by_stage.get(s.stage, 0) + s.usage.input_tokens
+    assert result.summary is not None
+    by_stage = {r.stage: r.input_tokens for r in result.summary.stages}
     # the fake charges 10 input tokens per call
     assert by_stage == {
         "planner": 10,  # 1 call
@@ -166,6 +168,7 @@ async def test_usage_is_tracked_per_stage_including_planner(all_tools: ToolCalle
         "synthesis": 10,
     }
     assert result.total_usage.input_tokens == 110
+    assert result.summary.llm_calls == 11 and result.summary.failed_llm_calls == 0
 
 
 async def test_checkpoint_types_are_all_registered(

@@ -5,6 +5,8 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
+from mash_agent.observability.tracing import span
+
 
 @dataclass
 class Attempted[T]:
@@ -40,8 +42,9 @@ async def run_resilient[T](
     retry_errors: list[str] = []
     for attempt in range(1, max_attempts + 1):
         try:
-            async with asyncio.timeout(timeout_s):
-                value = await fn()
+            with span("attempt", **{"mash.attempt": attempt, "mash.max_attempts": max_attempts}):
+                async with asyncio.timeout(timeout_s):
+                    value = await fn()
             return Attempted(value, attempt, time.monotonic() - start, None, retry_errors)
         except Exception as exc:
             message = (

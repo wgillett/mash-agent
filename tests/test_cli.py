@@ -39,7 +39,7 @@ async def test_approved_writes_briefing_and_report(all_tools: ToolCaller, tmp_pa
     assert briefing == result.markdown and "Not medical advice" in briefing
     report = json.loads((tmp_path / "run_report.json").read_text())
     assert report["status"] == "approved"
-    assert {"plan", "outcomes", "critic", "stage_usage", "decision"} <= report.keys()
+    assert {"plan", "outcomes", "critic", "metering", "summary", "decision"} <= report.keys()
     assert len(report["critic"]["checked"]) == 3  # verdicts and reasons are in the trace
 
 

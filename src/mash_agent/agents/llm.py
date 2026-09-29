@@ -27,29 +27,41 @@ class StructuredLLM(Protocol):
     ) -> Generated[T]: ...
 
 
-class OutputTruncatedError(ValueError):
+class StructuredOutputError(ValueError):
+    """The model answered but its structured output was unusable.
+
+    Carries the tokens that answer cost, so metering still counts calls that get retried.
+    """
+
+    def __init__(self, message: str, usage: Usage) -> None:
+        super().__init__(message)
+        self.usage = usage
+
+
+class OutputTruncatedError(StructuredOutputError):
     """The model hit ``max_tokens`` before finishing its structured output."""
 
 
 def unpack[T: BaseModel](schema: type[T], out: dict[str, Any]) -> Generated[T]:
     """Convert LangChain's ``include_raw=True`` output into ``Generated``."""
-    raw_meta = getattr(out.get("raw"), "response_metadata", None) or {}
-    if raw_meta.get("stop_reason") == "max_tokens":
-        raise OutputTruncatedError(
-            f"model output for {schema.__name__} was cut off at max_tokens; "
-            "ask for less output or raise max_tokens"
-        )
-    if (err := out.get("parsing_error")) is not None:
-        raise ValueError(f"model output did not match {schema.__name__}: {err}")
-    parsed = out.get("parsed")
-    if not isinstance(parsed, schema):
-        raise ValueError(f"model returned no structured {schema.__name__} output")
     raw = out.get("raw")
     meta = getattr(raw, "usage_metadata", None) or {}
     usage = Usage(
         input_tokens=int(meta.get("input_tokens", 0)),
         output_tokens=int(meta.get("output_tokens", 0)),
     )
+    raw_meta = getattr(raw, "response_metadata", None) or {}
+    if raw_meta.get("stop_reason") == "max_tokens":
+        raise OutputTruncatedError(
+            f"model output for {schema.__name__} was cut off at max_tokens; "
+            "ask for less output or raise max_tokens",
+            usage,
+        )
+    if (err := out.get("parsing_error")) is not None:
+        raise StructuredOutputError(f"model output did not match {schema.__name__}: {err}", usage)
+    parsed = out.get("parsed")
+    if not isinstance(parsed, schema):
+        raise StructuredOutputError(f"model returned no structured {schema.__name__} output", usage)
     return Generated(parsed, usage)
 
 

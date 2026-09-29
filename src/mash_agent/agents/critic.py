@@ -11,6 +11,7 @@ from mash_agent.agents import prompts
 from mash_agent.agents.llm import StructuredLLM
 from mash_agent.agents.models import Finding, SourceDoc, Usage
 from mash_agent.graph.resilience import run_resilient
+from mash_agent.observability.tracing import span
 
 Verdict = Literal["supported", "unsupported"]
 Outcome = Literal["supported", "unsupported", "unchecked"]
@@ -91,6 +92,17 @@ class Critic:
         return report
 
     async def _check_source(
+        self, source_id: str, claims: list[Finding], source: SourceDoc | None
+    ) -> tuple[list[CheckedFinding], Usage, str | None]:
+        with span(
+            "critic.source", **{"mash.source_id": source_id, "mash.claims": len(claims)}
+        ) as sp:
+            checked, usage, note = await self._check_source_inner(source_id, claims, source)
+            for outcome in ("supported", "unsupported", "unchecked"):
+                sp.set_attribute(f"mash.{outcome}", sum(1 for c in checked if c.outcome == outcome))
+            return checked, usage, note
+
+    async def _check_source_inner(
         self, source_id: str, claims: list[Finding], source: SourceDoc | None
     ) -> tuple[list[CheckedFinding], Usage, str | None]:
         def all_as(outcome: Outcome, reason: str) -> list[CheckedFinding]:

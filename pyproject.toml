@@ -5,11 +5,15 @@ description = "Multi-agent MASH/MASLD landscape briefing demo with claim-level v
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "click>=8.5.0",
     "httpx>=0.28.1",
     "langchain-anthropic>=1.7.4",
     "langgraph>=1.2.12",
     "mcp>=2.2.0",
+    "opentelemetry-api>=1.45.0",
+    "opentelemetry-sdk>=1.45.0",
     "pydantic>=2.13.5",
+    "rich>=15.0.0",
 ]
 
 [project.scripts]
