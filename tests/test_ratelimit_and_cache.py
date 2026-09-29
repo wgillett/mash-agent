@@ -103,3 +103,19 @@ async def test_cache_avoids_second_request(tmp_path: pytest.TempPathFactory) -> 
     assert await client.get_json("/x", {}) == {"n": 1}
     assert await client.get_json("/x", {}) == {"n": 1}
     assert calls == 1
+
+
+async def test_concurrent_sets_same_key_leave_valid_entry(tmp_path: pytest.TempPathFactory) -> None:
+    import asyncio
+
+    cache = DiskCache(tmp_path)  # type: ignore[arg-type]
+    key = DiskCache.make_key("k")
+    await asyncio.gather(*(asyncio.to_thread(cache.set, key, {"i": i}) for i in range(50)))
+    assert cache.get(key) in [{"i": i} for i in range(50)]
+    assert [p.name for p in tmp_path.iterdir()] == [f"{key}.json"]  # type: ignore[attr-defined]
+
+
+def test_expired_entry_is_deleted_on_read(tmp_path: pytest.TempPathFactory) -> None:
+    DiskCache(tmp_path).set("k", 1)  # type: ignore[arg-type]
+    assert DiskCache(tmp_path, ttl_seconds=-1).get("k") is None  # type: ignore[arg-type]
+    assert list(tmp_path.iterdir()) == []  # type: ignore[attr-defined]
