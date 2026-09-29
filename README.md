@@ -14,7 +14,7 @@ uv run mash-agent "Summarize the current state of late-stage MASH therapies and 
 
 A planner splits the question into sub-tasks. Three specialists (literature, trials, regulatory) run **in parallel**, each against one public API, and propose findings tagged with a source ID (PMID, NCT ID, or label ID plus section). A **critic** then checks every claim against the full text of its cited source, and only claims it supports are used to write the briefing. You review the exact briefing at an **approval gate** before anything is saved.
 
-A typical run takes 30 to 60 seconds and costs roughly $0.10 to $0.40 in model usage, depending on how many specialists the question needs.
+A run takes about 15 to 60 seconds (plus however long you take to review the briefing) and costs about $0.05 for a question that needs one specialist, up to about $0.40 for a broad question that uses all three, in model usage.
 
 ### Example output
 
@@ -128,7 +128,7 @@ docker run --rm -it \
   mash-agent "What safety information does the FDA label for resmetirom contain?"
 ```
 
-`-e NAME` (without a value) passes the variable from your shell, so the key never appears on the command line. Results appear in `./out`. `-it` is needed for the approval prompt; without a terminal use `--auto-approve`. On Linux, if writing to `./out` is denied, add `--user "$(id -u):$(id -g)"`. Subcommands work the same way, for example `docker run --rm mash-agent eval run --help`.
+`-e NAME` (without a value) passes the variable from your shell, so the key never appears on the command line. Results appear in `./out` on your machine (the run prints the container paths, `/out/...`). `-it` is needed for the approval prompt; without a terminal use `--auto-approve`. On Linux, if writing to `./out` is denied, add `--user "$(id -u):$(id -g)"`. Subcommands work the same way, for example `docker run --rm mash-agent eval run --help`.
 
 ### Configuration
 
