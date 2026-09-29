@@ -54,7 +54,8 @@ async def run_canary(
     originals = [f for o in result.outcomes if o.result for f in o.result.findings]
     mutants: list[tuple[str, Finding, str]] = []
     for f in originals:
-        for name, claim in mutate(f.claim).items():
+        source_text = sources[f.source_id].text if f.source_id in sources else ""
+        for name, claim in mutate(f.claim, source_text).items():
             mutants.append((name, f.model_copy(update={"claim": claim}), f.claim))
 
     checked = await Critic(llm, **critic_kwargs).check([m[1] for m in mutants], sources)  # type: ignore[arg-type]
