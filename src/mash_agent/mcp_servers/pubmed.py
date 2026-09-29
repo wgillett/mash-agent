@@ -1,6 +1,7 @@
 """PubMed E-utilities MCP server: search and fetch abstracts, each tagged with a PMID."""
 
 import os
+import re
 import xml.etree.ElementTree as ET
 from typing import Any
 
@@ -43,6 +44,9 @@ def parse_articles(xml_text: str) -> list[PubMedArticle]:
             body = _text(at)
             parts.append(f"{label}: {body}" if label else body)
         year = _text(node.find(".//JournalIssue/PubDate/Year")) or None
+        if year is None:  # some records only carry a free-text <MedlineDate>, e.g. "2024 Jan-Feb"
+            m = re.match(r"\d{4}", _text(node.find(".//JournalIssue/PubDate/MedlineDate")))
+            year = m.group(0) if m else None
         articles.append(
             PubMedArticle(
                 pmid=pmid,
