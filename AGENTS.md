@@ -72,6 +72,8 @@ Rate limits above are approximate and may have changed; verify against current p
 - **Orchestration:** LangGraph.
 - **Tools:** expose each data source as a thin, self-written **MCP server** with an explicit tool contract (typed inputs/outputs), rather than depending on community servers.
 - **Tracing:** Langfuse or OpenTelemetry, with per-run token and cost tracking.
+- **CLI:** [Click](https://click.palletsprojects.com/) for commands (a command group; more commands are expected, for example evals and report viewing). Do not add further `argparse`-based commands.
+- **Terminal output:** [Rich](https://rich.readthedocs.io/) for formatted output (rendered briefing at the approval gate, status tables, progress display). Rich affects terminal output only: `briefing.md`, `run_report.json` and other files stay plain and machine-readable, and output must degrade cleanly when not attached to a terminal.
 - **Packaging:** Dockerized; runnable with a single documented command.
 - **Optional extension:** reimplement the same workflow in CrewAI or Pydantic AI and write a one-page comparison of trade-offs (state management, delegation model, observability, ergonomics).
 
@@ -176,7 +178,7 @@ Before committing, `ruff check`, `ruff format --check`, `mypy`, and `pytest` mus
 ├── Dockerfile
 ├── src/
 │   └── mash_agent/
-│       ├── cli.py             # entry point
+│       ├── cli.py             # entry point (Click command group; Rich output)
 │       ├── graph/             # LangGraph definition: supervisor, specialists, critic, synthesis
 │       ├── agents/            # agent prompts and logic
 │       ├── mcp_servers/       # pubmed, clinicaltrials, openfda MCP servers
@@ -214,7 +216,7 @@ Before committing, `ruff check`, `ruff format --check`, `mypy`, and `pytest` mus
 2. **Specialists:** literature, trials, and regulatory agents returning source-tagged structured findings.
 3. **Orchestration:** supervisor with parallel delegation, retries, timeouts, and failure isolation.
 4. **Verification and synthesis:** critic agent, cited briefing, human approval gate.
-5. **Observability:** tracing plus per-run token/cost/latency report.
+5. **Observability and CLI:** tracing plus per-run token/cost/latency report. Also move the CLI from `argparse` to a Click command group (keep `mash-agent "question"` working) and add Rich terminal output: formatted briefing review at the approval gate, per-agent status table, and a progress display during runs. Tests for CLI behaviour use Click's `CliRunner`.
 6. **Evals:** fixed question set, metrics, and report.
 7. **Polish:** Dockerization, README, architecture diagram, design-decisions doc.
 8. **Optional:** CrewAI or Pydantic AI reimplementation and trade-off comparison.
