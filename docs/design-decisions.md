@@ -83,3 +83,79 @@ Short notes on non-obvious choices. Extended as milestones land.
   summary tables, a live status line); files stay plain, and output has no colour codes when not
   attached to a terminal. The status line is paused while the approval prompt is shown. HTTP
   library logging is off unless `-v`.
+
+## Evaluation (Milestone 6)
+
+- **One command:** `mash-agent eval run` (or `python evals/run_evals.py`) runs a fixed question
+  set (`evals/questions.yaml`, 14 questions across regulatory, trials, literature, mixed and two
+  safety cases) end to end and writes `report.json` (machine-readable), `summary.md`,
+  `runs/<question>.json` and a `spotcheck.jsonl` sample. `mash-agent eval compare A B` diffs two
+  runs. It asks before spending money; `--yes` skips that. Results land in `eval_results/`
+  (git-ignored); commit a `summary.md` deliberately when you want it recorded.
+- **An independent judge:** the critic cannot grade itself. Every claim the specialists propose
+  is also graded by a *judge* (a different model by default, `claude-opus-5-5`, and a different,
+  graded prompt: supported / partial / unsupported) against the same source text, before the
+  critic's exclusions are applied. That gives, against the judge: the unsupported rate before the
+  critic, the residual rate in what reaches the briefing (after), how many unsupported claims the
+  critic caught or missed, and how many good claims it wrongly excluded. Strict citation accuracy
+  counts only fully supported claims; lenient also counts partial. The judge is an LLM, so it is
+  an independent check, not ground truth: `spotcheck.jsonl` (disagreements first) is there for
+  hand-labelling a sample.
+- **Known-truth canary as a second view:** the corrupted-claim test (see Milestone 4) runs on
+  every question's claims and its miss rate is aggregated. It does not depend on the judge.
+- **Deterministic checks:** structural guarantees of each briefing (every bullet cites a source,
+  every cited source was retrieved, every claim was critic-passed), advice-like phrases, topic
+  coverage terms, and out-of-scope handling (`expect_no_claims`). Coverage terms are a coarse
+  proxy, not correctness.
+- **Honest statistics:** every rate is reported with counts and a 95% Wilson interval. `compare`
+  reports the difference between two runs with a Newcombe interval and says whether it excludes
+  zero. (An earlier version called a difference "noise" whenever the two runs' intervals overlapped;
+  that is too conservative, since overlapping intervals can still hide a real difference.) Claims are
+  not independent: the same claim recurs across questions and several come from one source, so
+  intervals are optimistic. Model output varies run to run; repeat before acting on small gaps.
+  Runs within a day also share the on-disk API cache, so variants see the same retrieved records
+  when their queries match.
+- **Failures are data:** a question that crashes is recorded as `crashed`; unjudgeable claims are
+  `unjudged` and excluded from rates (never counted as right or wrong); costs are reported for the
+  system and separately for eval overhead (judge, canary).
+- **Prompt variants:** named additions to the extraction prompt (`EXTRACT_VARIANTS`) can be
+  evaluated with `--variant`. A variant becomes the default only if the evals show it helps
+  without cutting useful claims. The original prompt is kept as `legacy` (eval directories from
+  before the change label it `baseline`). Three alternatives were tried: `source-terms` (keep the source's own
+  terminology; motivated by a real run where the extractor wrote "NAFLD/MASH" over a source that
+  said NAFLD and the critic rightly excluded it) and `quote-anchored` (every number, drug,
+  population and qualifier in a claim must appear in its quote), and `no-commentary` (state only
+  what the source states: no interpretation, grouping, parenthetical asides, or claims about what a
+  source does not say or about other sources). The third was added after the first full baseline
+  run, in which the critic excluded 19 of 259 claims: about half were interpretive glosses ("the
+  adverse reactions are gastrointestinal") or absence and cross-source claims ("the provided
+  Rezdiffra sections contain no GLP-1 information"), and most of the rest added outside knowledge
+  (a trial's name or phase, "biopsy-confirmed" where the source said "clinical evidence").
+- **What the first baseline showed** (14 questions, 259 claims): the judge rated no claim
+  unsupported, so critic recall on unsupported claims is undefined; 13 claims (5.0%) were partial,
+  the critic excluded 11 of them, and 2 reached the briefing (0.8% residual). The critic passed
+  0 of 536 deliberately corrupted claims. The critic was stricter than the judge on 8 claims (mostly
+  glosses and absence claims). The informative metrics are therefore the not-fully-supported rate
+  before and after the critic and the exclusion rate, not the unsupported rate.
+- **Decision: `no-commentary` is the default extraction prompt** (evidence, 14 questions per run,
+  two `legacy` runs and one run of each alternative; percentages are of proposed claims):
+
+  | | legacy (2 runs pooled) | source-terms | quote-anchored | **no-commentary** |
+  |---|---|---|---|---|
+  | Excluded by the critic | 6.8% | 6.3% | 2.2% | **2.0%** |
+  | Not fully supported before the critic | 4.5% | 4.7% | 1.9% | **1.3%** |
+  | Not fully supported after the critic | 1.0% | 2.1% | 1.3% | 0.3% |
+
+  The two `legacy` runs agreed closely (7.3% and 6.3% excluded), so the run-to-run noise floor is
+  small. `quote-anchored` and `no-commentary` both cut exclusions by about two-thirds; their
+  intervals against the pooled `legacy` runs exclude zero, and they cannot be told apart from each
+  other. `source-terms` did nothing measurable. `no-commentary` was chosen because it is nominally
+  best on every metric and, in a side-by-side read of one briefing, produced more literal
+  wording without losing content. Not established: the residual error after the critic
+  (about 1%, a handful of claims) did not change for any variant; the eval measures accuracy and
+  topic coverage, not whether a briefing is useful; each alternative has a single run; claims are
+  not independent, so intervals are optimistic. To reproduce the comparison, run
+  `mash-agent eval run --variant legacy` and `--variant no-commentary`, then `eval compare`.
+- **Known follow-up:** the trials specialist keeps some low-relevance results (for example old
+  academic NAFLD trials) that take slots from the current MASH pipeline. This is a relevance
+  problem, not an accuracy one, so the evals above do not measure it.

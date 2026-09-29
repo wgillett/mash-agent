@@ -48,6 +48,7 @@ class Specialist[Q: BaseModel]:
         fetch: Callable[[ToolCaller, Q], Awaitable[list[SourceDoc]]],
         query_label: Callable[[Q], str],
         max_findings: int = 12,
+        extra_instructions: str = "",
     ) -> None:
         self.name = name
         self._llm = llm
@@ -58,6 +59,7 @@ class Specialist[Q: BaseModel]:
         self._extract_system = (
             f"{extract_system}\n- Return at most {max_findings} findings: choose the most "
             "informative ones and do not restate the same fact."
+            + (f"\n{extra_instructions}" if extra_instructions else "")
         )
         self._fetch = fetch
         self._query_label = query_label

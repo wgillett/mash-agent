@@ -13,6 +13,7 @@ dependencies = [
     "opentelemetry-api>=1.45.0",
     "opentelemetry-sdk>=1.45.0",
     "pydantic>=2.13.5",
+    "pyyaml>=6.0.3",
     "rich>=15.0.0",
 ]
 
@@ -27,7 +28,15 @@ build-backend = "hatchling.build"
 packages = ["src/mash_agent"]
 
 [dependency-groups]
-dev = ["ruff", "mypy", "pytest", "pytest-asyncio", "pytest-cov", "pre-commit"]
+dev = [
+    "ruff",
+    "mypy",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pre-commit",
+    "types-pyyaml>=6.0.12.20260906",
+]
 
 [tool.ruff]
 line-length = 100

@@ -8,6 +8,7 @@ import asyncio
 import logging
 import os
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +19,12 @@ from rich.panel import Panel
 from rich.status import Status
 
 from mash_agent.agents.llm import StructuredLLM
+from mash_agent.agents.prompts import DEFAULT_EXTRACT_VARIANT, EXTRACT_VARIANTS
 from mash_agent.agents.tools import ToolCaller
+from mash_agent.evals.metrics import claim_metrics
+from mash_agent.evals.questions import DEFAULT_QUESTIONS_PATH, load_questions, select
+from mash_agent.evals.report import EvalReport, compare, render_markdown
+from mash_agent.evals.runner import run_eval, write_artifacts
 from mash_agent.graph.state import Decision
 from mash_agent.graph.workflow import ApprovalRequest, Decide, Workflow, WorkflowResult
 from mash_agent.observability.render import (
@@ -247,6 +253,144 @@ def report_command(path: Path) -> None:
 def trace_command(path: Path) -> None:
     """Show the span tree (agents, LLM calls, tool calls, failures) from a trace.jsonl."""
     Console().print(trace_tree(load_spans(path)))
+
+
+# ---- evaluation ------------------------------------------------------------------------------
+
+JUDGE_MODEL_ENV_VAR = "MASH_EVAL_JUDGE_MODEL"
+DEFAULT_JUDGE_MODEL = "claude-opus-5-5"
+# Rough dollars per question from one measured run: system ~0.29, canary ~0.13, judge ~0.22.
+ESTIMATED_COST_PER_QUESTION = 0.65
+
+
+def build_judge_llm(model: str) -> StructuredLLM:
+    """The independent judge model. Tests replace this."""
+    from mash_agent.agents.llm import AnthropicLLM
+
+    return AnthropicLLM(model=model)
+
+
+@cli.group("eval")
+def eval_group() -> None:
+    """Score the system on a fixed question set (citation accuracy, critic, cost, latency)."""
+
+
+@eval_group.command("run")
+@click.option(
+    "--questions",
+    "questions_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=DEFAULT_QUESTIONS_PATH,
+    show_default=True,
+    help="Question set (YAML).",
+)
+@click.option("--id", "ids", multiple=True, help="Only this question id (repeatable).")
+@click.option("--limit", type=int, default=None, help="Only the first N questions.")
+@click.option(
+    "--variant",
+    type=click.Choice(sorted(EXTRACT_VARIANTS)),
+    default=DEFAULT_EXTRACT_VARIANT,
+    show_default=True,
+    help="Extraction-prompt variant to evaluate.",
+)
+@click.option(
+    "--judge-model",
+    default=lambda: os.environ.get(JUDGE_MODEL_ENV_VAR, DEFAULT_JUDGE_MODEL),
+    show_default=f"${JUDGE_MODEL_ENV_VAR} or {DEFAULT_JUDGE_MODEL}",
+    help="Model that independently grades every claim (use one different from the system's).",
+)
+@click.option(
+    "--parallel",
+    type=click.IntRange(min=1),
+    default=2,
+    show_default=True,
+    help="Questions run at once.",
+)
+@click.option(
+    "--no-canary", is_flag=True, help="Skip the corrupted-claim critic test (saves cost)."
+)
+@click.option(
+    "--spotcheck",
+    type=int,
+    default=25,
+    show_default=True,
+    help="Claims to write to spotcheck.jsonl for hand labelling.",
+)
+@click.option(
+    "--out-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Default: eval_results/<timestamp>-<variant>.",
+)
+@click.option("--yes", is_flag=True, help="Do not ask before spending money.")
+@click.option("-v", "--verbose", is_flag=True, help="Show library HTTP request logging.")
+def eval_run(
+    questions_path: Path,
+    ids: tuple[str, ...],
+    limit: int | None,
+    variant: str,
+    judge_model: str,
+    parallel: int,
+    no_canary: bool,
+    spotcheck: int,
+    out_dir: Path | None,
+    yes: bool,
+    verbose: bool,
+) -> None:
+    """Run each selected question end to end, judge all claims, write report.json and summary.md."""
+    console = Console()
+    try:
+        questions = select(load_questions(questions_path), list(ids) or None, limit)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    llm, tools = build_services()
+    set_log_level(verbose)
+    judge_llm = build_judge_llm(judge_model)
+    estimate = ESTIMATED_COST_PER_QUESTION * len(questions) * (0.8 if no_canary else 1.0)
+    console.print(
+        f"{len(questions)} question(s), variant [bold]{variant}[/], judge [bold]{judge_model}[/]. "
+        f"Rough cost estimate: about ${estimate:.0f} (the report shows measured cost)."
+    )
+    if not yes and not click.confirm("Run the evaluation (this calls paid APIs)?", default=False):
+        raise click.Abort()
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    target = out_dir or Path("eval_results") / f"{stamp}-{variant}"
+    reporter = Reporter(console)
+    reporter.start()
+    try:
+        report, artifacts = asyncio.run(
+            run_eval(
+                questions,
+                llm=llm,
+                judge_llm=judge_llm,
+                tools=tools,
+                variant=variant,
+                canary=not no_canary,
+                parallel=parallel,
+                on_progress=reporter.progress,
+            )
+        )
+    finally:
+        reporter.stop()
+    paths = write_artifacts(report, artifacts, target, spotcheck_n=spotcheck)
+    console.print(Markdown(render_markdown(report)))
+    console.print(f"\n[green]wrote[/] {paths['report']}, {paths['summary']}, {paths['spotcheck']}")
+
+
+def _load_report(path: Path) -> EvalReport:
+    file = path / "report.json" if path.is_dir() else path
+    report = EvalReport.model_validate_json(file.read_text())
+    # Reports written by earlier versions lack newer metrics; recompute from the raw claim records.
+    report.aggregate.claims = claim_metrics(report.claims)
+    return report
+
+
+@eval_group.command("compare")
+@click.argument("base", type=click.Path(exists=True, path_type=Path))
+@click.argument("other", type=click.Path(exists=True, path_type=Path))
+def eval_compare(base: Path, other: Path) -> None:
+    """Compare two eval runs (report.json files or their directories)."""
+    Console().print(Markdown(compare(_load_report(base), _load_report(other))))
 
 
 def main() -> None:

@@ -41,7 +41,7 @@ async def fetch(tools: ToolCaller, q: LabelQuery) -> list[SourceDoc]:
     return docs
 
 
-def build(llm: StructuredLLM, tools: ToolCaller) -> Specialist[LabelQuery]:
+def build(llm: StructuredLLM, tools: ToolCaller, extra_extract: str = "") -> Specialist[LabelQuery]:
     return Specialist(
         name=NAME,
         llm=llm,
@@ -50,5 +50,6 @@ def build(llm: StructuredLLM, tools: ToolCaller) -> Specialist[LabelQuery]:
         query_system=prompts.REGULATORY_QUERY,
         extract_system=prompts.REGULATORY_EXTRACT,
         fetch=fetch,
+        extra_instructions=extra_extract,
         query_label=lambda q: ", ".join(q.drugs),
     )

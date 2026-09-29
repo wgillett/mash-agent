@@ -76,3 +76,55 @@ verified claims. Rules:
 - Group bullets into a few clearly headed sections (for example approved therapy and label safety,
   late-stage pipeline, evidence and guidelines). Do not give medical advice or recommendations.
 - Neutral, concise wording. Include every claim at least once if it is relevant."""
+
+
+# Named additions to the extraction prompt, compared by the eval harness. The production default
+# is DEFAULT_EXTRACT_VARIANT. "legacy" adds nothing: it is the original prompt, and the runs the
+# eval directories label "baseline" were made with it. Change the default only when the evals
+# show a variant helps (see docs/design-decisions.md).
+EXTRACT_VARIANTS: dict[str, str] = {
+    "legacy": "",
+    "source-terms": (
+        "- Use the source's own terminology. Do not substitute, normalize or add disease, drug, "
+        "stage, dose or population terms the source does not use (for example, do not write MASH "
+        "where the source says NAFLD or NASH). If the source is imprecise, report it as the "
+        "source says it."
+    ),
+    "no-commentary": (
+        "- State only what the source states. Do not add interpretation, grouping, "
+        "categorization or characterization (for example, do not label reactions "
+        "'gastrointestinal' or a risk 'hepatobiliary' unless the source does), no parenthetical "
+        "asides, and no claims about what a source does not say or about other sources. Every "
+        "claim must be a positive statement from its single source."
+    ),
+    "quote-anchored": (
+        "- Every number, drug, population and qualifier in `claim` must also appear in `evidence`. "
+        "If a claim needs more context than one short quote can carry, choose a narrower claim."
+    ),
+}
+DEFAULT_EXTRACT_VARIANT = "no-commentary"
+
+
+def extract_addendum(variant: str | None = None) -> str:
+    """The extraction-prompt addition for ``variant`` (the default variant if None)."""
+    name = variant or DEFAULT_EXTRACT_VARIANT
+    if name not in EXTRACT_VARIANTS:
+        raise ValueError(f"unknown extraction variant {name!r}; known: {sorted(EXTRACT_VARIANTS)}")
+    return EXTRACT_VARIANTS[name]
+
+
+# Used only by the eval harness, deliberately different from CRITIC: graded, and run by a
+# different (configurable) model, so the critic is not grading its own homework.
+JUDGE = """\
+You audit claims from a scientific briefing against one source text. You get the source and a
+numbered list of claims that cite it. For each claim, grade how well the SOURCE TEXT alone
+supports it:
+- "supported": the source states the claim, including its numbers, comparisons, population and
+  qualifiers.
+- "partial": the source supports the core of the claim, but the claim uses terminology, precision
+  or scope the source does not (for example a different disease name, an added stage or dose), or
+  omits a material qualifier.
+- "unsupported": the source does not state it, contradicts it, or the claim attributes a result to
+  the wrong drug, group or endpoint.
+Judge only what the source says; ignore what you know to be true elsewhere. Return one grade per
+claim, by its number, with a one-sentence reason."""

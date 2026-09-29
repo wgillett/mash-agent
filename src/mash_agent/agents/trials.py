@@ -44,7 +44,9 @@ async def fetch(tools: ToolCaller, q: TrialsQuery) -> list[SourceDoc]:
     ]
 
 
-def build(llm: StructuredLLM, tools: ToolCaller) -> Specialist[TrialsQuery]:
+def build(
+    llm: StructuredLLM, tools: ToolCaller, extra_extract: str = ""
+) -> Specialist[TrialsQuery]:
     return Specialist(
         name=NAME,
         llm=llm,
@@ -53,5 +55,6 @@ def build(llm: StructuredLLM, tools: ToolCaller) -> Specialist[TrialsQuery]:
         query_system=prompts.TRIALS_QUERY,
         extract_system=prompts.TRIALS_EXTRACT,
         fetch=fetch,
+        extra_instructions=extra_extract,
         query_label=lambda q: q.condition,
     )

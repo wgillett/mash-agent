@@ -32,7 +32,9 @@ async def fetch(tools: ToolCaller, q: PubMedQuery) -> list[SourceDoc]:
     ]
 
 
-def build(llm: StructuredLLM, tools: ToolCaller) -> Specialist[PubMedQuery]:
+def build(
+    llm: StructuredLLM, tools: ToolCaller, extra_extract: str = ""
+) -> Specialist[PubMedQuery]:
     return Specialist(
         name=NAME,
         llm=llm,
@@ -41,5 +43,6 @@ def build(llm: StructuredLLM, tools: ToolCaller) -> Specialist[PubMedQuery]:
         query_system=prompts.LITERATURE_QUERY,
         extract_system=prompts.LITERATURE_EXTRACT,
         fetch=fetch,
+        extra_instructions=extra_extract,
         query_label=lambda q: q.query,
     )
