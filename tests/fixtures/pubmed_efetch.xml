@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID Version="1">38763796</PMID>
+      <Article>
+        <Journal><JournalIssue><PubDate><Year>2024</Year></PubDate></JournalIssue>
+          <Title>Example Journal</Title></Journal>
+        <ArticleTitle>Example resmetirom trial in <i>MASH</i>.</ArticleTitle>
+        <Abstract>
+          <AbstractText Label="BACKGROUND">Background text.</AbstractText>
+          <AbstractText Label="RESULTS">Results text.</AbstractText>
+        </Abstract>
+      </Article>
+    </MedlineCitation>
+  </PubmedArticle>
+  <PubmedArticle>
+    <MedlineCitation>
+      <PMID Version="1">37363821</PMID>
+      <Article>
+        <ArticleTitle>No abstract article</ArticleTitle>
+      </Article>
+    </MedlineCitation>
+  </PubmedArticle>
+</PubmedArticleSet>

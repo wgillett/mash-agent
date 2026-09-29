@@ -1,0 +1,40 @@
+[project]
+name = "mash-agent"
+version = "0.1.0"
+description = "Multi-agent MASH/MASLD landscape briefing demo with claim-level verification"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.28.1",
+    "mcp>=2.2.0",
+    "pydantic>=2.13.5",
+]
+
+[project.scripts]
+mash-agent = "mash_agent.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mash_agent"]
+
+[dependency-groups]
+dev = ["ruff", "mypy", "pytest", "pytest-asyncio", "pytest-cov", "pre-commit"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
