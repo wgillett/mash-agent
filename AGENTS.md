@@ -67,12 +67,79 @@ Rate limits above are approximate and may have changed; verify against current p
 
 ## Technical Direction
 
-- **Language:** Python.
+- **Language:** Python 3.13 (recent, and well supported by the AI/LLM library ecosystem).
+- **LLM provider:** Anthropic (Claude), via `langchain-anthropic` inside LangGraph. API key in `ANTHROPIC_API_KEY`; model IDs are configurable via environment variables, not hardcoded.
 - **Orchestration:** LangGraph.
 - **Tools:** expose each data source as a thin, self-written **MCP server** with an explicit tool contract (typed inputs/outputs), rather than depending on community servers.
 - **Tracing:** Langfuse or OpenTelemetry, with per-run token and cost tracking.
 - **Packaging:** Dockerized; runnable with a single documented command.
 - **Optional extension:** reimplement the same workflow in CrewAI or Pydantic AI and write a one-page comparison of trade-offs (state management, delegation model, observability, ergonomics).
+
+## Tooling
+
+- **Project manager:** [uv](https://docs.astral.sh/uv/). Dependencies live in `pyproject.toml`, `uv.lock` is committed, and the Python version is pinned in `.python-version` (`3.13`). Do not use pip, Poetry, or requirements files directly.
+- **Build backend:** hatchling, with a `src/` layout (`src/mash_agent/`).
+- **Dev dependencies** go in `[dependency-groups] dev`: `ruff`, `mypy`, `pytest`, `pytest-asyncio`, `pytest-cov`, `pre-commit`.
+- **Linting/formatting:** ruff (line length 100; rules `E`, `F`, `I`, `UP`, `B`, `SIM`).
+- **Type checking:** mypy in strict mode over `src` and `tests`.
+- **Tests:** pytest with `testpaths = ["tests"]`. Tests must not hit the network; use recorded fixtures for API responses.
+- **Pre-commit:** hooks for ruff (lint + format) and mypy.
+- **Docker:** base the image on the official uv image and install with `uv sync --frozen --no-dev`.
+
+Starting point for `pyproject.toml`:
+
+```toml
+[project]
+name = "mash-agent"
+version = "0.1.0"
+description = "Multi-agent MASH/MASLD landscape briefing demo with claim-level verification"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []  # add runtime deps (langgraph, langchain-anthropic, mcp, httpx, pydantic, ...) via `uv add`
+
+[project.scripts]
+mash-agent = "mash_agent.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mash_agent"]
+
+[dependency-groups]
+dev = ["ruff", "mypy", "pytest", "pytest-asyncio", "pytest-cov", "pre-commit"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+```
+
+### Common commands
+
+```bash
+uv sync                          # create .venv and install all deps (incl. dev)
+uv add <pkg>                     # add a runtime dependency
+uv add --dev <pkg>               # add a dev dependency
+uv run pytest                    # run tests
+uv run ruff check . && uv run ruff format .   # lint and format
+uv run mypy                      # type check
+uv run pre-commit install        # enable git hooks
+```
+
+Before committing, `ruff check`, `ruff format --check`, `mypy`, and `pytest` must all pass.
 
 ## Production Requirements
 
@@ -103,14 +170,19 @@ Rate limits above are approximate and may have changed; verify against current p
 ├── AGENTS.md
 ├── README.md              # overview, architecture diagram, design decisions, disclaimers
 ├── pyproject.toml
+├── uv.lock
+├── .python-version
+├── .pre-commit-config.yaml
 ├── Dockerfile
 ├── src/
-│   ├── graph/             # LangGraph definition: supervisor, specialists, critic, synthesis
-│   ├── agents/            # agent prompts and logic
-│   ├── mcp_servers/       # pubmed, clinicaltrials, openfda MCP servers
-│   ├── cache/             # on-disk cache
-│   ├── ratelimit/         # per-tool limiters and backoff
-│   └── observability/     # tracing and cost tracking
+│   └── mash_agent/
+│       ├── cli.py             # entry point
+│       ├── graph/             # LangGraph definition: supervisor, specialists, critic, synthesis
+│       ├── agents/            # agent prompts and logic
+│       ├── mcp_servers/       # pubmed, clinicaltrials, openfda MCP servers
+│       ├── cache/             # on-disk cache
+│       ├── ratelimit/         # per-tool limiters and backoff
+│       └── observability/     # tracing and cost tracking
 ├── evals/
 │   ├── questions.yaml
 │   └── run_evals.py
@@ -138,7 +210,7 @@ Rate limits above are approximate and may have changed; verify against current p
 
 ## Milestones
 
-1. **Tools:** three MCP servers with typed contracts, caching, rate limiting, and tests.
+1. **Tools:** project skeleton per **Tooling** (uv, ruff, mypy, pytest, pre-commit), then three MCP servers with typed contracts, caching, rate limiting, and tests.
 2. **Specialists:** literature, trials, and regulatory agents returning source-tagged structured findings.
 3. **Orchestration:** supervisor with parallel delegation, retries, timeouts, and failure isolation.
 4. **Verification and synthesis:** critic agent, cited briefing, human approval gate.
