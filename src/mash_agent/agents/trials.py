@@ -23,6 +23,7 @@ def render_trial(t: Trial) -> str:
     return "\n".join(
         [
             f"Title: {t.title}",
+            f"Conditions: {'; '.join(t.conditions) or 'none listed'}",
             f"Sponsor: {t.sponsor or 'unknown'}",
             f"Phase: {', '.join(t.phases) or 'unknown'}",
             f"Status: {t.status or 'unknown'}",

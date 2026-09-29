@@ -28,8 +28,9 @@ OR "nonalcoholic steatohepatitis"."""
 
 TRIALS_EXTRACT = (
     EXTRACT_COMMON
-    + "\nSources are ClinicalTrials.gov records (ids are NCT numbers). Ignore studies that are not "
-    "about MASH/NASH/MASLD liver disease (the acronym MASH can mean other things). Report sponsor, "
+    + "\nSources are ClinicalTrials.gov records (ids are NCT numbers). Judge relevance by the "
+    "listed Conditions (titles often omit the disease): ignore studies whose conditions are not "
+    "MASH/NASH/MASLD liver disease (the acronym MASH can mean other things). Report sponsor, "
     "phase, status, intervention and primary endpoint as stated."
 )
 

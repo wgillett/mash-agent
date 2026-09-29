@@ -83,6 +83,13 @@ async def test_trials_specialist(trials_transport: httpx.MockTransport) -> None:
     result = await trials.build(llm, tools).run(SubTask(focus="phase 3 pipeline"))
 
     assert len(result.sources) == 20
+    by_id = {src.source_id: src for src in result.sources}
+    # Titles often omit the disease, so relevance is judged from conditions: they must be shown.
+    assert (
+        "Conditions: Metabolic Dysfunction-associated Steatohepatitis" in by_id["NCT07701993"].text
+    )
+    aneurysm = by_id["NCT04876638"]  # "(MASH)" in the title but an unrelated disease
+    assert "Conditions: Aneurysm, Ruptured" in aneurysm.text
     (finding,) = result.findings
     assert finding.evidence_verified and finding.agent == "trials"
     assert "MASH OR NASH" in llm.calls[0]["system"]  # prompt warns about the ambiguous acronym

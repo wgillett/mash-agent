@@ -16,6 +16,7 @@ class Trial(BaseModel):
     nct_id: str
     title: str
     sponsor: str | None = None
+    conditions: list[str] = []
     phases: list[str] = []
     status: str | None = None
     primary_endpoints: list[str] = []
@@ -35,6 +36,7 @@ def parse_study(study: dict[str, Any]) -> Trial:
         nct_id=ident.get("nctId", ""),
         title=ident.get("briefTitle", ""),
         sponsor=proto.get("sponsorCollaboratorsModule", {}).get("leadSponsor", {}).get("name"),
+        conditions=proto.get("conditionsModule", {}).get("conditions", []),
         phases=design.get("phases", []),
         status=proto.get("statusModule", {}).get("overallStatus"),
         primary_endpoints=[

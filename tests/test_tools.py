@@ -58,10 +58,12 @@ async def test_trials_recorded_search(trials_transport: httpx.MockTransport) -> 
     assert len(result.trials) == 20
     assert all(re.fullmatch(r"NCT\d{8}", t.nct_id) for t in result.trials)
     assert all(set(t.phases) & {"PHASE2", "PHASE3"} for t in result.trials)
+    assert all(t.conditions for t in result.trials)
     first = result.trials[0]
     assert first.nct_id == "NCT07701993"
     assert first.sponsor == "GlaxoSmithKline"
     assert first.phases == ["PHASE3"]
+    assert first.conditions == ["Metabolic Dysfunction-associated Steatohepatitis"]
     assert first.status == "RECRUITING"
     assert first.interventions == ["Efimosfermin alfa", "Placebo"]
     assert first.primary_endpoints == [
