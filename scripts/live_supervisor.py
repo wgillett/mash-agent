@@ -38,7 +38,10 @@ async def main(question: str) -> None:
     print("\nagents:")
     for o in result.outcomes:
         n = len(o.result.findings) if o.result else 0
-        line = f"  {o.agent:<10} {o.status:<6} attempts={o.attempts} latency={o.latency_s:5.1f}s findings={n}"
+        line = (
+            f"  {o.agent:<10} {o.status:<6} attempts={o.attempts} "
+            f"latency={o.latency_s:5.1f}s findings={n}"
+        )
         print(line + (f"  ERROR: {o.error}" if o.error else ""))
         for e in o.retry_errors:
             print(f"      retried after: {e}")
