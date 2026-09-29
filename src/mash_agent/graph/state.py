@@ -5,7 +5,9 @@ from typing import Annotated, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
+from mash_agent.agents.critic import CriticReport
 from mash_agent.agents.models import Finding, SourceDoc, SpecialistResult, SubTask, Usage
+from mash_agent.agents.synthesis import Briefing
 
 AgentName = Literal["literature", "trials", "regulatory"]
 ALL_AGENTS: tuple[AgentName, ...] = ("literature", "trials", "regulatory")
@@ -39,11 +41,29 @@ class SpecialistInput(TypedDict):
     task: PlannedTask
 
 
+class StageUsage(BaseModel):
+    stage: str
+    usage: Usage
+
+
+class Decision(BaseModel):
+    """The human approval gate's answer."""
+
+    approved: bool
+    comment: str = ""
+
+
 class GraphState(TypedDict, total=False):
     question: str
     plan: Plan
     notes: Annotated[list[str], operator.add]
     outcomes: Annotated[list[AgentOutcome], operator.add]
+    stage_usage: Annotated[list[StageUsage], operator.add]
+    critic: CriticReport
+    briefing: Briefing
+    markdown: str
+    limitations: list[str]
+    decision: Decision
 
 
 class RunReport(BaseModel):

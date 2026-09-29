@@ -21,6 +21,7 @@ from mash_agent.graph.state import (
     PlannedTask,
     RunStatus,
     SpecialistInput,
+    StageUsage,
     SupervisorResult,
 )
 
@@ -61,7 +62,7 @@ class Supervisor:
 
     # ---- graph nodes -------------------------------------------------------------------------
 
-    async def _plan(self, state: GraphState) -> dict[str, Any]:
+    async def plan_node(self, state: GraphState) -> dict[str, Any]:
         question = state["question"]
         cfg = self._config
         attempt = await run_resilient(
@@ -74,18 +75,20 @@ class Supervisor:
         if attempt.value is None:
             note = f"planner failed ({attempt.error}); using default plan"
             return {"plan": default_plan(question), "notes": [note]}
+        usage = [StageUsage(stage="planner", usage=attempt.value.usage)]
         tasks = [t for t in attempt.value.value.tasks if t.focus.strip()][:MAX_TASKS]
         if not tasks:
             return {
                 "plan": default_plan(question),
                 "notes": ["planner returned no tasks; used default plan"],
+                "stage_usage": usage,
             }
-        return {"plan": Plan(tasks=tasks)}
+        return {"plan": Plan(tasks=tasks), "stage_usage": usage}
 
-    def _fan_out(self, state: GraphState) -> list[Send]:
+    def fan_out(self, state: GraphState) -> list[Send]:
         return [Send("specialist", {"task": t}) for t in state["plan"].tasks]
 
-    async def _specialist(self, state: SpecialistInput) -> dict[str, Any]:
+    async def specialist_node(self, state: SpecialistInput) -> dict[str, Any]:
         task = state["task"]
         subtask = SubTask(focus=task.focus)
         specialist = self._specialists[task.agent]
@@ -107,14 +110,19 @@ class Supervisor:
             error=attempt.error,
             retry_errors=attempt.retry_errors,
         )
-        return {"outcomes": [outcome]}
+        usage = (
+            [StageUsage(stage=f"specialist:{task.agent}", usage=outcome.result.usage)]
+            if outcome.result
+            else []  # tokens spent on failed attempts are not captured
+        )
+        return {"outcomes": [outcome], "stage_usage": usage}
 
     def _build(self) -> Any:
         graph = StateGraph(GraphState)
-        graph.add_node("plan", self._plan)
-        graph.add_node("specialist", self._specialist, input_schema=SpecialistInput)
+        graph.add_node("plan", self.plan_node)
+        graph.add_node("specialist", self.specialist_node, input_schema=SpecialistInput)
         graph.add_edge(START, "plan")
-        graph.add_conditional_edges("plan", self._fan_out, ["specialist"])
+        graph.add_conditional_edges("plan", self.fan_out, ["specialist"])
         graph.add_edge("specialist", END)
         return graph.compile()
 
