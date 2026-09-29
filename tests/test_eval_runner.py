@@ -101,6 +101,7 @@ def llms(handler: Handler | None = None) -> tuple[FunctionLLM, FunctionLLM]:
 async def evaluate(all_tools: ToolCaller, handler: Handler | None = None, **kw: Any):  # type: ignore[no-untyped-def]
     system, judge = llms(handler)
     kw.setdefault("canary", False)
+    kw.setdefault("now", lambda: datetime(2026, 9, 29, tzinfo=UTC))
     return await run_eval(
         QUESTIONS,
         llm=system,
@@ -108,7 +109,6 @@ async def evaluate(all_tools: ToolCaller, handler: Handler | None = None, **kw: 
         tools=all_tools,
         config=SupervisorConfig(backoff_s=0.0),
         sleep=no_sleep,
-        now=lambda: datetime(2026, 9, 29, tzinfo=UTC),
         **kw,
     )
 
@@ -329,3 +329,19 @@ async def test_variant_names_include_the_commentary_variant() -> None:
     assert set(EXTRACT_VARIANTS) == {"baseline", "source-terms", "quote-anchored", "no-commentary"}
     assert EXTRACT_VARIANTS["baseline"] == ""
     assert "positive statement" in EXTRACT_VARIANTS["no-commentary"]
+
+
+async def test_started_at_is_taken_at_the_start_not_the_end(all_tools: ToolCaller) -> None:
+    from datetime import timedelta
+
+    clock = {"t": datetime(2026, 9, 29, 3, 0, 0, tzinfo=UTC)}
+
+    def now() -> datetime:
+        clock["t"] += timedelta(minutes=5)  # every read is 5 minutes later than the last
+        return clock["t"]
+
+    report, _ = await evaluate(all_tools, now=now)
+    assert (
+        report.config.started_at == "2026-09-29T03:05:00+00:00"
+    )  # the first read, not a later one
+    assert clock["t"] == datetime(2026, 9, 29, 3, 5, 0, tzinfo=UTC)  # and it was read only once

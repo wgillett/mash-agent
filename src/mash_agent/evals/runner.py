@@ -66,6 +66,7 @@ async def run_eval(
 ) -> tuple[EvalReport, EvalArtifacts]:
     if variant not in EXTRACT_VARIANTS:
         raise ValueError(f"unknown variant {variant!r}; known: {sorted(EXTRACT_VARIANTS)}")
+    started_at = now()  # taken before any work, so "started" really is the start
     say = on_progress or (lambda message: None)
     system_model = getattr(llm, "model", "unknown")
     judge = InstrumentedLLM(judge_llm)
@@ -150,7 +151,7 @@ async def run_eval(
             canary=canary,
             parallel=parallel,
             question_ids=[q.id for q in questions],
-            started_at=now().isoformat(timespec="seconds"),
+            started_at=started_at.isoformat(timespec="seconds"),
         ),
         aggregate=aggregate(runs, claims),
         runs=runs,
