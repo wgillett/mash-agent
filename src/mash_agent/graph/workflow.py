@@ -1,5 +1,6 @@
 """Full workflow: plan -> specialists -> critic -> synthesis -> human approval gate."""
 
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import date
@@ -25,9 +26,13 @@ from mash_agent.graph.state import (
     PlannedTask,
     RunStatus,
     SpecialistInput,
-    StageUsage,
 )
 from mash_agent.graph.supervisor import Supervisor, SupervisorConfig
+from mash_agent.observability.context import metering as metering_context
+from mash_agent.observability.context import stage
+from mash_agent.observability.meter import InstrumentedLLM, Metering, UsageMeter, instrument_tools
+from mash_agent.observability.summary import RunSummary, build_summary
+from mash_agent.observability.tracing import mark_error, span
 
 WorkflowStatus = Literal["approved", "rejected", "no_verified_claims"]
 
@@ -44,7 +49,6 @@ CHECKPOINT_TYPES: tuple[tuple[str, str], ...] = tuple(
         SourceDoc,
         Finding,
         Usage,
-        StageUsage,
         CriticReport,
         CheckedFinding,
         Briefing,
@@ -80,14 +84,19 @@ class WorkflowResult(BaseModel):
     limitations: list[str] = Field(default_factory=list)
     decision: Decision | None = None
     notes: list[str] = Field(default_factory=list)
-    stage_usage: list[StageUsage] = Field(default_factory=list)
+    run_id: str = ""
+    model: str = "unknown"
+    wall_time_s: float = 0.0
+    metering: Metering = Field(default_factory=Metering)
+    summary: RunSummary | None = None
 
     @property
     def total_usage(self) -> Usage:
-        total = Usage()
-        for s in self.stage_usage:
-            total += s.usage
-        return total
+        """All LLM tokens of the run, including calls that failed or were retried."""
+        return Usage(
+            input_tokens=sum(c.input_tokens for c in self.metering.llm_calls),
+            output_tokens=sum(c.output_tokens for c in self.metering.llm_calls),
+        )
 
 
 SCOPE_LABELS = {
@@ -148,14 +157,21 @@ class Workflow:
         *,
         sleep: Callable[[float], Awaitable[None]] | None = None,
         today: Callable[[], date] = date.today,
+        progress: Callable[[str], None] | None = None,
     ) -> None:
         cfg = config or SupervisorConfig()
-        self._supervisor = Supervisor(llm, tools, cfg, sleep=sleep)
+        self._progress = progress or (lambda message: None)
+        instrumented = InstrumentedLLM(llm)
+        self.model = instrumented.model
+        llm = instrumented
+        tools = instrument_tools(tools)
+        self._supervisor = Supervisor(llm, tools, cfg, sleep=sleep, progress=progress)
         self._critic = Critic(
             llm,
             timeout_s=cfg.specialist_timeout_s,
             max_attempts=cfg.max_attempts,
             backoff_s=cfg.backoff_s,
+            max_parallel=cfg.critic_max_parallel,
             sleep=sleep,
         )
         self._synth = Synthesizer(
@@ -175,12 +191,12 @@ class Workflow:
         outcomes = state["outcomes"]
         findings = [f for o in outcomes if o.result for f in o.result.findings]
         sources = {s.source_id: s for o in outcomes if o.result for s in o.result.sources}
-        report = await self._critic.check(findings, sources)
-        return {
-            "critic": report,
-            "notes": report.notes,
-            "stage_usage": [StageUsage(stage="critic", usage=report.usage)],
-        }
+        n_sources = len({f.source_id for f in findings})
+        self._progress(f"critic checking {len(findings)} claims across {n_sources} sources")
+        with stage("critic"), span("critic", **{"mash.claims": len(findings)}) as sp:
+            report = await self._critic.check(findings, sources)
+            sp.set_attribute("mash.supported", len(report.passed))
+        return {"critic": report, "notes": report.notes}
 
     @staticmethod
     def _after_critic(state: GraphState) -> str:
@@ -189,7 +205,9 @@ class Workflow:
     async def _synthesize_node(self, state: GraphState) -> dict[str, Any]:
         critic = state["critic"]
         outcomes = state["outcomes"]
-        briefing = await self._synth.synthesize(critic.passed)
+        self._progress(f"writing briefing from {len(critic.passed)} verified claims")
+        with stage("synthesis"), span("synthesis", **{"mash.claims": len(critic.passed)}):
+            briefing = await self._synth.synthesize(critic.passed)
         limitations = build_limitations(
             outcomes, critic, [*state.get("notes", []), *briefing.notes]
         )
@@ -208,7 +226,6 @@ class Workflow:
             "briefing": briefing,
             "markdown": markdown,
             "limitations": limitations,
-            "stage_usage": [StageUsage(stage="synthesis", usage=briefing.usage)],
         }
 
     @staticmethod
@@ -244,18 +261,51 @@ class Workflow:
     # ---- entry point -------------------------------------------------------------------------
 
     async def run(self, question: str, decide: Decide) -> WorkflowResult:
+        run_id = uuid.uuid4().hex[:12]
         config: Any = {
-            "configurable": {"thread_id": str(uuid.uuid4())},
+            "configurable": {"thread_id": run_id},
             "max_concurrency": self._cfg.max_parallel,
         }
-        state = await self.graph.ainvoke(
-            {"question": question, "notes": [], "outcomes": [], "stage_usage": []}, config=config
+        meter = UsageMeter()
+        start = time.monotonic()
+        with (
+            metering_context(meter),
+            span("mash.run", **{"mash.run_id": run_id, "mash.model": self.model}),
+        ):
+            state = await self.graph.ainvoke(
+                {"question": question, "notes": [], "outcomes": []}, config=config
+            )
+            while "__interrupt__" in state:
+                request = ApprovalRequest.model_validate(state["__interrupt__"][0].value)
+                self._progress("waiting for your approval")
+                with span("approval", **{"mash.claims": request.verified_claims}) as sp:
+                    decision = await decide(request)
+                    sp.set_attribute("mash.approved", decision.approved)
+                    if not decision.approved:
+                        mark_error(sp, f"rejected: {decision.comment or 'no reason given'}")
+                state = await self.graph.ainvoke(
+                    Command(resume=decision.model_dump()), config=config
+                )
+        result = self._result(question, state)
+        wall = time.monotonic() - start
+        summary = build_summary(
+            run_id=run_id,
+            model=self.model,
+            status=result.status,
+            agents_status=result.agents_status,
+            wall_time_s=wall,
+            outcomes=result.outcomes,
+            metering=meter.data,
         )
-        while "__interrupt__" in state:
-            request = ApprovalRequest.model_validate(state["__interrupt__"][0].value)
-            decision = await decide(request)
-            state = await self.graph.ainvoke(Command(resume=decision.model_dump()), config=config)
-        return self._result(question, state)
+        return result.model_copy(
+            update={
+                "run_id": run_id,
+                "model": self.model,
+                "wall_time_s": wall,
+                "metering": meter.data,
+                "summary": summary,
+            }
+        )
 
     @staticmethod
     def _result(question: str, state: dict[str, Any]) -> WorkflowResult:
@@ -286,5 +336,4 @@ class Workflow:
             or (build_limitations(outcomes, critic, state["notes"]) if critic else []),
             decision=decision,
             notes=state["notes"],
-            stage_usage=state["stage_usage"],
         )

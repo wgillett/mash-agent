@@ -47,3 +47,39 @@ Short notes on non-obvious choices. Extended as milestones land.
   verdict and reason, token usage per stage) is always written as the trace.
 - **Token accounting:** usage is recorded per stage (planner, each specialist, critic,
   synthesis). Tokens spent on failed attempts are not captured.
+
+## Observability, cost and the CLI (Milestone 5)
+
+- **OpenTelemetry, not Langfuse:** the code is instrumented with the OpenTelemetry API only.
+  Langfuse needs an account or a hosted service, which a demo repo should not require; it can
+  ingest OTLP, so exporting there later means adding an exporter, not changing agent code.
+  Today spans go to `trace.jsonl` (one JSON object per span). `mash-agent trace` renders the span
+  tree; failures are red. The provider is held in `observability/tracing.py` rather than set
+  globally, so tests and the CLI each configure their own, and with tracing off every `span()` is
+  a no-op.
+- **What is traced:** run, plan, each specialist, every retry attempt, every LLM call (model,
+  stage, tokens, cost), every tool call, the critic (per source), synthesis, and the approval
+  decision. Failures we turn into data (a failed specialist, a rejected briefing) are marked as
+  errors on their spans, not only raised exceptions.
+- **Stage attribution without plumbing:** context variables record which stage is running and
+  which meter is active. They propagate into LangGraph's parallel node tasks, so an LLM call
+  deep inside a specialist is attributed to that specialist. A test asserts every span shares
+  one trace and has a parent, because this is the easiest thing to break silently.
+- **One place for bookkeeping:** `InstrumentedLLM` and `instrument_tools` wrap the LLM and tool
+  seams, so agents contain no timing or token code. Calls that fail or get retried are recorded
+  too: a structured-output error carries the tokens it cost, so retries no longer disappear from
+  the totals (the earlier per-stage counts missed them). A call cancelled by a timeout is
+  recorded with no tokens, since none are known.
+- **Cost:** tokens are priced from a table of list prices (`observability/pricing.py`, dated),
+  overridable with `MASH_AGENT_PRICES`. An unknown model yields no cost, never a guess. Prompt
+  caching is not used, so cache prices are not modelled. Cost is an estimate from list prices,
+  not a bill.
+- **Run summary:** `run_report.json` includes a summary by stage, agent and tool (tokens, cost,
+  attempts, latency, failures). LLM time per stage is summed across parallel calls, so it can
+  exceed wall time.
+- **CLI:** Click group; `mash-agent "question"` routes to `run` when the first argument is not a
+  known command or option (so a question that is exactly `run`, `report` or `trace` needs the
+  explicit `run` form). Rich formats terminal output only (the briefing at the gate, the
+  summary tables, a live status line); files stay plain, and output has no colour codes when not
+  attached to a terminal. The status line is paused while the approval prompt is shown. HTTP
+  library logging is off unless `-v`.

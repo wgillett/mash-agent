@@ -1,5 +1,6 @@
 """Supervisor: plan -> parallel specialists (isolated failures) -> collect."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -21,9 +22,10 @@ from mash_agent.graph.state import (
     PlannedTask,
     RunStatus,
     SpecialistInput,
-    StageUsage,
     SupervisorResult,
 )
+from mash_agent.observability.context import stage
+from mash_agent.observability.tracing import mark_error, span
 
 MAX_TASKS = 6
 
@@ -35,6 +37,7 @@ class SupervisorConfig:
     max_attempts: int = 3
     backoff_s: float = 1.0
     max_parallel: int = 3
+    critic_max_parallel: int = 8  # concurrent critic calls (one per cited source)
 
 
 def default_plan(question: str) -> Plan:
@@ -49,8 +52,12 @@ class Supervisor:
         tools: ToolCaller,
         config: SupervisorConfig | None = None,
         sleep: Any = None,
+        progress: Callable[[str], None] | None = None,
     ) -> None:
         self._llm = llm
+        self._progress = progress or (lambda message: None)
+        self._done = 0
+        self._total = 0
         self._config = config or SupervisorConfig()
         self._sleep_kwargs: dict[str, Any] = {"sleep": sleep} if sleep else {}
         self._specialists: dict[AgentName, Specialist[Any]] = {
@@ -65,41 +72,52 @@ class Supervisor:
     async def plan_node(self, state: GraphState) -> dict[str, Any]:
         question = state["question"]
         cfg = self._config
-        attempt = await run_resilient(
-            lambda: self._llm.generate(Plan, system=prompts.PLANNER, user=question),
-            timeout_s=cfg.planner_timeout_s,
-            max_attempts=cfg.max_attempts,
-            backoff_s=cfg.backoff_s,
-            **self._sleep_kwargs,
-        )
+        self._progress("planning sub-tasks")
+        with stage("planner"), span("plan"):
+            attempt = await run_resilient(
+                lambda: self._llm.generate(Plan, system=prompts.PLANNER, user=question),
+                timeout_s=cfg.planner_timeout_s,
+                max_attempts=cfg.max_attempts,
+                backoff_s=cfg.backoff_s,
+                **self._sleep_kwargs,
+            )
         if attempt.value is None:
             note = f"planner failed ({attempt.error}); using default plan"
             return {"plan": default_plan(question), "notes": [note]}
-        usage = [StageUsage(stage="planner", usage=attempt.value.usage)]
         tasks = [t for t in attempt.value.value.tasks if t.focus.strip()][:MAX_TASKS]
         if not tasks:
             return {
                 "plan": default_plan(question),
                 "notes": ["planner returned no tasks; used default plan"],
-                "stage_usage": usage,
             }
-        return {"plan": Plan(tasks=tasks), "stage_usage": usage}
+        return {"plan": Plan(tasks=tasks)}
 
     def fan_out(self, state: GraphState) -> list[Send]:
-        return [Send("specialist", {"task": t}) for t in state["plan"].tasks]
+        tasks = state["plan"].tasks
+        self._done, self._total = 0, len(tasks)
+        self._progress(f"running {len(tasks)} specialist task(s) in parallel")
+        return [Send("specialist", {"task": t}) for t in tasks]
 
     async def specialist_node(self, state: SpecialistInput) -> dict[str, Any]:
         task = state["task"]
         subtask = SubTask(focus=task.focus)
         specialist = self._specialists[task.agent]
         cfg = self._config
-        attempt = await run_resilient(
-            lambda: specialist.run(subtask),
-            timeout_s=cfg.specialist_timeout_s,
-            max_attempts=cfg.max_attempts,
-            backoff_s=cfg.backoff_s,
-            **self._sleep_kwargs,
-        )
+        with (
+            stage(f"specialist:{task.agent}"),
+            span("specialist", **{"mash.agent": task.agent, "mash.focus": task.focus[:200]}) as sp,
+        ):
+            attempt = await run_resilient(
+                lambda: specialist.run(subtask),
+                timeout_s=cfg.specialist_timeout_s,
+                max_attempts=cfg.max_attempts,
+                backoff_s=cfg.backoff_s,
+                **self._sleep_kwargs,
+            )
+            sp.set_attribute("mash.status", "ok" if attempt.ok else "failed")
+            sp.set_attribute("mash.attempts", attempt.attempts)
+            if attempt.error:
+                mark_error(sp, attempt.error)
         outcome = AgentOutcome(
             agent=task.agent,
             task=subtask,
@@ -110,12 +128,9 @@ class Supervisor:
             error=attempt.error,
             retry_errors=attempt.retry_errors,
         )
-        usage = (
-            [StageUsage(stage=f"specialist:{task.agent}", usage=outcome.result.usage)]
-            if outcome.result
-            else []  # tokens spent on failed attempts are not captured
-        )
-        return {"outcomes": [outcome], "stage_usage": usage}
+        self._done += 1
+        self._progress(f"specialists finished: {self._done}/{self._total}")
+        return {"outcomes": [outcome]}
 
     def _build(self) -> Any:
         graph = StateGraph(GraphState)

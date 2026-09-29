@@ -41,11 +41,6 @@ class SpecialistInput(TypedDict):
     task: PlannedTask
 
 
-class StageUsage(BaseModel):
-    stage: str
-    usage: Usage
-
-
 class Decision(BaseModel):
     """The human approval gate's answer."""
 
@@ -58,7 +53,6 @@ class GraphState(TypedDict, total=False):
     plan: Plan
     notes: Annotated[list[str], operator.add]
     outcomes: Annotated[list[AgentOutcome], operator.add]
-    stage_usage: Annotated[list[StageUsage], operator.add]
     critic: CriticReport
     briefing: Briefing
     markdown: str
