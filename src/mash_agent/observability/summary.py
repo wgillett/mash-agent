@@ -16,6 +16,8 @@ class StageRow(BaseModel):
     failed_calls: int
     input_tokens: int
     output_tokens: int
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
     cost_usd: float | None
     latency_s: float = Field(description="Summed LLM call time; parallel calls overlap.")
 
@@ -45,6 +47,8 @@ class RunSummary(BaseModel):
     wall_time_s: float
     input_tokens: int
     output_tokens: int
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
     cost_usd: float | None = Field(description="None if any stage's model has no known price.")
     llm_calls: int
     failed_llm_calls: int
@@ -85,6 +89,8 @@ def build_summary(
         usage = Usage(
             input_tokens=sum(c.input_tokens for c in calls),
             output_tokens=sum(c.output_tokens for c in calls),
+            cache_read_tokens=sum(c.cache_read_tokens for c in calls),
+            cache_creation_tokens=sum(c.cache_creation_tokens for c in calls),
         )
         stages.append(
             StageRow(
@@ -93,6 +99,8 @@ def build_summary(
                 failed_calls=sum(1 for c in calls if not c.ok),
                 input_tokens=usage.input_tokens,
                 output_tokens=usage.output_tokens,
+                cache_read_tokens=usage.cache_read_tokens,
+                cache_creation_tokens=usage.cache_creation_tokens,
                 cost_usd=cost_usd(usage, model, prices),
                 latency_s=sum(c.latency_s for c in calls),
             )
@@ -117,6 +125,8 @@ def build_summary(
         wall_time_s=wall_time_s,
         input_tokens=sum(s.input_tokens for s in stages),
         output_tokens=sum(s.output_tokens for s in stages),
+        cache_read_tokens=sum(s.cache_read_tokens for s in stages),
+        cache_creation_tokens=sum(s.cache_creation_tokens for s in stages),
         cost_usd=total_cost if stages else 0.0,
         llm_calls=sum(s.calls for s in stages),
         failed_llm_calls=sum(s.failed_calls for s in stages),

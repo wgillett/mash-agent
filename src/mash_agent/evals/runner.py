@@ -115,7 +115,10 @@ async def run_eval(
                     notes.append(f"{q.id}: judging crashed ({type(exc).__name__}: {exc})")
                 for call in meter.data.llm_calls:
                     judge_usage += Usage(
-                        input_tokens=call.input_tokens, output_tokens=call.output_tokens
+                        input_tokens=call.input_tokens,
+                        output_tokens=call.output_tokens,
+                        cache_read_tokens=call.cache_read_tokens,
+                        cache_creation_tokens=call.cache_creation_tokens,
                     )
                 if canary:
                     try:

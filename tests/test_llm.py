@@ -67,3 +67,18 @@ def test_unpack_flags_truncated_output_before_parse_error() -> None:
     out = {"raw": raw, "parsed": None, "parsing_error": ValueError("Field required")}
     with pytest.raises(OutputTruncatedError, match="cut off at max_tokens"):
         unpack(ExtractedFindings, out)
+
+
+def test_unpack_reads_cache_tokens() -> None:
+    parsed = ExtractedFindings(findings=[])
+    raw = AIMessage(
+        content="",
+        usage_metadata={
+            "input_tokens": 1000,
+            "output_tokens": 3,
+            "total_tokens": 1003,
+            "input_token_details": {"cache_read": 800, "cache_creation": 100},
+        },
+    )
+    out = unpack(ExtractedFindings, {"raw": raw, "parsed": parsed, "parsing_error": None})
+    assert (out.usage.cache_read_tokens, out.usage.cache_creation_tokens) == (800, 100)

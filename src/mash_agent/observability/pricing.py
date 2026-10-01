@@ -3,8 +3,10 @@
 Prices are USD per million tokens (Anthropic first-party API list prices, as cached in the Claude
 API reference on 2026-09-25). They change; override without code changes via the
 ``MASH_AGENT_PRICES`` environment variable, a JSON object of ``{"model-id": [input, output]}``.
-A model with no known price yields ``None`` cost rather than a guess. Cache-read/write pricing is
-not modelled because the agents do not use prompt caching.
+A model with no known price yields ``None`` cost rather than a guess. Cached input is priced as
+multiples of the input price: reads at 0.1x, 5-minute-TTL writes at 1.25x. A few models list a
+different read multiple (for example 0.05x on claude-opus-5-5), so cache-heavy costs are an
+estimate.
 """
 
 import json
@@ -14,6 +16,8 @@ from dataclasses import dataclass
 from mash_agent.agents.models import Usage
 
 PRICES_ENV_VAR = "MASH_AGENT_PRICES"
+CACHE_READ_MULTIPLE = 0.1
+CACHE_WRITE_MULTIPLE = 1.25
 
 
 @dataclass(frozen=True)
@@ -46,6 +50,10 @@ def cost_usd(usage: Usage, model: str, prices: dict[str, Price] | None = None) -
     price = (prices if prices is not None else load_prices()).get(model)
     if price is None:
         return None
-    return (
-        usage.input_tokens * price.input_per_mtok + usage.output_tokens * price.output_per_mtok
-    ) / 1_000_000
+    uncached = usage.input_tokens - usage.cache_read_tokens - usage.cache_creation_tokens
+    input_cost = price.input_per_mtok * (
+        uncached
+        + usage.cache_read_tokens * CACHE_READ_MULTIPLE
+        + usage.cache_creation_tokens * CACHE_WRITE_MULTIPLE
+    )
+    return (input_cost + usage.output_tokens * price.output_per_mtok) / 1_000_000

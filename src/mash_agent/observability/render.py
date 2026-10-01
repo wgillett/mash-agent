@@ -23,7 +23,8 @@ def summary_renderable(s: RunSummary) -> RenderableType:
     )
     head.add_row(
         "tokens",
-        f"{s.input_tokens:,} in / {s.output_tokens:,} out",
+        f"{s.input_tokens:,} in / {s.output_tokens:,} out"
+        + (f" ({s.cache_read_tokens:,} cached)" if s.cache_read_tokens else ""),
         "cost",
         fmt_cost(s.cost_usd),
     )

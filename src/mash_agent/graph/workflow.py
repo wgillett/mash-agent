@@ -96,6 +96,8 @@ class WorkflowResult(BaseModel):
         return Usage(
             input_tokens=sum(c.input_tokens for c in self.metering.llm_calls),
             output_tokens=sum(c.output_tokens for c in self.metering.llm_calls),
+            cache_read_tokens=sum(c.cache_read_tokens for c in self.metering.llm_calls),
+            cache_creation_tokens=sum(c.cache_creation_tokens for c in self.metering.llm_calls),
         )
 
 
