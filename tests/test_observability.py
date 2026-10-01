@@ -279,3 +279,10 @@ async def test_jsonl_trace_file_and_rendering(all_tools: ToolCaller, tmp_path: P
     text = console.export_text()
     for needle in ("Agents", "Stages (LLM)", "Tools", "literature", "specialist:trials", "$"):
         assert needle in text
+
+
+def test_cost_prices_cache_reads_and_writes_separately() -> None:
+    # 1M input tokens: 800k read from cache (0.1x), 100k written (1.25x), 100k uncached (1x)
+    usage = Usage(input_tokens=1_000_000, cache_read_tokens=800_000, cache_creation_tokens=100_000)
+    expected = 2.0 * (0.1 + 0.8 * 0.1 + 0.1 * 1.25)  # claude-sonnet-5-5 input is $2/MTok
+    assert cost_usd(usage, "claude-sonnet-5-5") == pytest.approx(expected)

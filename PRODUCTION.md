@@ -7,7 +7,7 @@
 The same code could serve very different uses, with very different obligations:
 
 | Intended use | Example | What follows |
-|---|---|---|
+| --- | --- | --- |
 | Exploratory research aid for a small team | A medical-affairs analyst scanning the landscape before a meeting | Light governance: SSO, audit log, cost caps |
 | Input to work products that others rely on | Briefing decks, competitive-intelligence summaries, responses to internal questions | Reviewer roles, retained evidence, change control, a documented validation approach |
 | Anything touching regulated records or decisions | Content in submissions, promotional materials, safety processes | Full quality-system treatment; probably a different design conversation |
@@ -48,7 +48,7 @@ flowchart LR
 ## 4. What changes in this codebase
 
 | Demo today | Production replacement |
-|---|---|
+| --- | --- |
 | In-memory graph checkpointer (`MemorySaver`) | A durable checkpointer (LangGraph provides a Postgres implementation, `langgraph-checkpoint-postgres`) so a run can pause and resume on any worker |
 | Approval prompt at the terminal | An approval API and run states: `queued`, `running`, `awaiting_approval`, `approved`, `rejected`, `failed`, with an expiry, reminders and notifications |
 | `--auto-approve` flag | Disabled in production (it exists for evals and CI). Approval is the control that makes the output reviewable. |
@@ -125,7 +125,7 @@ I am not a regulatory specialist. These are the questions I would expect to come
 ## 11. Staged path
 
 | Stage | Scope | Done when |
-|---|---|---|
+| --- | --- | --- |
 | 0. Pilot | One container behind an authenticated API; Postgres and object storage; approval turned into an API and a simple review page; audit log; cost caps | A small team can use it and every approval is attributable |
 | 1. Scale | Queue, autoscaled workers, durable checkpoints and resume, shared cache and rate limiting, metering persisted | Load and crash tests pass: killing a worker mid-run loses at most one stage, and cost totals stay correct |
 | 2. Govern | Roles, quotas, tenancy, retention policy, evidence retention, evals as a release gate, model pinning | Quality and security review signed off for the intended use |

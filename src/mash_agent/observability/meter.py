@@ -25,6 +25,8 @@ class LlmCall(BaseModel):
     schema_name: str
     input_tokens: int = 0
     output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
     latency_s: float
     ok: bool
     error: str | None = None
@@ -94,6 +96,8 @@ class InstrumentedLLM:
                 latency = time.monotonic() - start
                 sp.set_attribute("gen_ai.usage.input_tokens", usage.input_tokens)
                 sp.set_attribute("gen_ai.usage.output_tokens", usage.output_tokens)
+                sp.set_attribute("gen_ai.usage.cache_read_tokens", usage.cache_read_tokens)
+                sp.set_attribute("gen_ai.usage.cache_creation_tokens", usage.cache_creation_tokens)
                 cost = cost_usd(usage, self.model, self._prices)
                 if cost is not None:
                     sp.set_attribute("mash.cost_usd", cost)
@@ -107,6 +111,8 @@ class InstrumentedLLM:
                             schema_name=schema.__name__,
                             input_tokens=usage.input_tokens,
                             output_tokens=usage.output_tokens,
+                            cache_read_tokens=usage.cache_read_tokens,
+                            cache_creation_tokens=usage.cache_creation_tokens,
                             latency_s=latency,
                             ok=error is None,
                             error=error,

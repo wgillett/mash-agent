@@ -46,9 +46,12 @@ def unpack[T: BaseModel](schema: type[T], out: dict[str, Any]) -> Generated[T]:
     """Convert LangChain's ``include_raw=True`` output into ``Generated``."""
     raw = out.get("raw")
     meta = getattr(raw, "usage_metadata", None) or {}
+    details = meta.get("input_token_details") or {}
     usage = Usage(
         input_tokens=int(meta.get("input_tokens", 0)),
         output_tokens=int(meta.get("output_tokens", 0)),
+        cache_read_tokens=int(details.get("cache_read", 0)),
+        cache_creation_tokens=int(details.get("cache_creation", 0)),
     )
     raw_meta = getattr(raw, "response_metadata", None) or {}
     if raw_meta.get("stop_reason") == "max_tokens":
